@@ -1,30 +1,29 @@
 # Arquitetura recomendada
 
-## Princípios
-- Modularidade estrita
-- Separação de responsabilidades
-- Segurança e auditabilidade por padrão
-- Observabilidade nativa
-- Preparação para multi-tenant
+## Fase 3 — foco
+- Tooling real via adapters/interfaces
+- Memória persistente por projeto com fluxo pending->approved
+- Context Builder determinístico com ranking e justificativa
+- Orquestração com subtarefas e depends_on
+- Auditoria sanitizada
 
-## Fase 2 — decisões finais
-1. Persistência PostgreSQL com **psycopg 3 + SQL migrations versionadas**.
-2. Sessão com **session token stateful em Redis**.
-3. Autenticação com usuário real persistido em `users` no PostgreSQL.
-4. RBAC inicial por roles (`admin`, `operator`, `viewer`) em rotas de execução.
-5. Locks efêmeros com Redis `SET NX EX` por `execution_id`.
-6. Eventos auditáveis mínimos: `queued`, `enqueued`, `started`, `completed`, `failed`, `lock_skipped`.
+## Ordem mandatória de execução de ferramentas
+1. Policy
+2. Guard (pre)
+3. Execução da ferramenta
+4. Guard (post)
+5. Audit
 
-## Camadas
-- **API:** rotas HTTP e controle de acesso.
-- **Application:** casos de uso de autenticação, execução e consulta.
-- **Core:** engine de agentes/orquestração/guards/telemetria.
-- **Domain:** entidades e portas.
-- **Infrastructure:** implementações PostgreSQL/Redis/ARQ.
+## Tool adapters
+- FilesystemTool: sandbox project_root + anti path traversal
+- TerminalTool: allowlist + timeout + limite de output + sem shell arbitrário
+- HttpTool: domain allowlist + method allowlist + timeout + retry
 
-## Fluxo operacional ponta a ponta
-1. Usuário faz login (`/auth/login`) e recebe `session_id`.
-2. Rotas privadas validam sessão no Redis + role no PostgreSQL.
-3. API cria execução (`queued`) e enfileira no ARQ.
-4. Worker aplica lock Redis por execução, marca `running`, executa engine e persiste resultado.
-5. Dashboard/Workspace/Logs consomem execuções e timeline da API.
+## Modelo de memória
+- Campos: `type`, `source`, `confidence`, `status`
+- Status: `pending` -> `approved`
+
+## Orquestração
+- Subtasks com `depends_on`
+- Eventos obrigatórios de subtarefa: `subtask_started`, `subtask_completed` (e falha quando aplicável)
+- Audit trail sanitizado (sem payload bruto completo)

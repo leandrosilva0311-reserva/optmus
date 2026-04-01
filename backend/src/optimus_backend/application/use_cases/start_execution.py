@@ -2,8 +2,9 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord
-from optimus_backend.domain.ports import AuditRepository, ExecutionRepository, JobQueue
+from optimus_backend.core.orchestrator.service import Orchestrator
+from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, MemoryEntry, SubtaskRecord
+from optimus_backend.domain.ports import AuditRepository, ExecutionRepository, JobQueue, MemoryRepository, SubtaskRepository
 
 
 def build_event(execution_id: str, event_type: str, message: str) -> AuditEventRecord:
@@ -17,10 +18,19 @@ def build_event(execution_id: str, event_type: str, message: str) -> AuditEventR
 
 
 class StartExecutionUseCase:
-    def __init__(self, executions: ExecutionRepository, audit: AuditRepository, queue: JobQueue) -> None:
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        subtasks: SubtaskRepository,
+        audit: AuditRepository,
+        queue: JobQueue,
+        orchestrator: Orchestrator,
+    ) -> None:
         self._executions = executions
+        self._subtasks = subtasks
         self._audit = audit
         self._queue = queue
+        self._orchestrator = orchestrator
 
     def execute(self, project_id: str, objective: str, agent: str) -> ExecutionRecord:
         now = datetime.now(UTC)
@@ -37,16 +47,29 @@ class StartExecutionUseCase:
             updated_at=now,
         )
         self._executions.create(record)
+
+        subtasks = self._orchestrator.plan_subtasks(record.id, objective)
+        self._subtasks.create_many(subtasks)
+
         self._audit.append(build_event(record.id, "queued", "Execution queued by API request"))
+        self._audit.append(build_event(record.id, "subtasks_created", f"{len(subtasks)} subtasks created"))
         self._queue.enqueue_execution(record.id)
         self._audit.append(build_event(record.id, "enqueued", "Execution sent to async queue"))
         return record
 
 
 class FinalizeExecutionUseCase:
-    def __init__(self, executions: ExecutionRepository, audit: AuditRepository) -> None:
+    def __init__(
+        self,
+        executions: ExecutionRepository,
+        subtasks: SubtaskRepository,
+        audit: AuditRepository,
+        memory: MemoryRepository,
+    ) -> None:
         self._executions = executions
+        self._subtasks = subtasks
         self._audit = audit
+        self._memory = memory
 
     def mark_running(self, execution_id: str) -> None:
         record = self._executions.get(execution_id)
@@ -56,7 +79,10 @@ class FinalizeExecutionUseCase:
         self._executions.update(updated)
         self._audit.append(build_event(execution_id, "started", "Worker started processing execution"))
 
-    def complete(self, execution_id: str, summary: str, duration_ms: int) -> None:
+    def mark_subtask_event(self, execution_id: str, subtask: SubtaskRecord, event: str, message: str) -> None:
+        self._audit.append(build_event(execution_id, event, f"{subtask.agent}:{subtask.title}:{message}"))
+
+    def complete(self, execution_id: str, summary: str, duration_ms: int, project_id: str) -> None:
         record = self._executions.get(execution_id)
         if record is None:
             raise KeyError("execution not found")
@@ -69,6 +95,18 @@ class FinalizeExecutionUseCase:
         )
         self._executions.update(updated)
         self._audit.append(build_event(execution_id, "completed", "Execution completed"))
+        self._memory.add(
+            MemoryEntry(
+                id=str(uuid4()),
+                project_id=project_id,
+                entry_type="decision",
+                source="execution_summary",
+                confidence=0.7,
+                content=summary[:500],
+                status="pending",
+                created_at=datetime.now(UTC),
+            )
+        )
 
     def fail(self, execution_id: str, message: str, duration_ms: int) -> None:
         record = self._executions.get(execution_id)

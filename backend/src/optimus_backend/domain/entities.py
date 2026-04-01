@@ -31,3 +31,28 @@ class UserRecord:
     email: str
     password_hash: str
     role: str
+
+
+@dataclass(slots=True)
+class MemoryEntry:
+    id: str
+    project_id: str
+    entry_type: str
+    source: str
+    confidence: float
+    content: str
+    status: str  # pending|approved
+    created_at: datetime
+
+
+@dataclass(slots=True)
+class SubtaskRecord:
+    id: str
+    execution_id: str
+    agent: str
+    title: str
+    depends_on: list[str]
+    status: str
+    result_summary: str | None
+    created_at: datetime
+    updated_at: datetime

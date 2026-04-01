@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, UserRecord
+from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, MemoryEntry, SubtaskRecord, UserRecord
 
 
 class ExecutionRepository(Protocol):
@@ -11,9 +11,21 @@ class ExecutionRepository(Protocol):
     def list_recent(self, limit: int = 50) -> Sequence[ExecutionRecord]: ...
 
 
+class SubtaskRepository(Protocol):
+    def create_many(self, subtasks: list[SubtaskRecord]) -> None: ...
+    def update(self, subtask: SubtaskRecord) -> None: ...
+    def list_by_execution(self, execution_id: str) -> Sequence[SubtaskRecord]: ...
+
+
 class AuditRepository(Protocol):
     def append(self, event: AuditEventRecord) -> None: ...
     def list_by_execution(self, execution_id: str) -> Sequence[AuditEventRecord]: ...
+
+
+class MemoryRepository(Protocol):
+    def add(self, entry: MemoryEntry) -> None: ...
+    def list_for_project(self, project_id: str, status: str | None = None) -> Sequence[MemoryEntry]: ...
+    def approve(self, entry_id: str) -> None: ...
 
 
 class SessionRepository(Protocol):

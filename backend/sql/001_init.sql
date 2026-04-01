@@ -19,11 +19,34 @@ CREATE TABLE IF NOT EXISTS executions (
   updated_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS subtasks (
+  id TEXT PRIMARY KEY,
+  execution_id TEXT NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+  agent TEXT NOT NULL,
+  title TEXT NOT NULL,
+  depends_on TEXT[] NOT NULL,
+  status TEXT NOT NULL,
+  result_summary TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_events (
   id TEXT PRIMARY KEY,
   execution_id TEXT NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
   event_type TEXT NOT NULL,
   message TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_entries (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  entry_type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL
 );
 

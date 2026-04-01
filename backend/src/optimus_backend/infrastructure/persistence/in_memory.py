@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, UserRecord
+from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, MemoryEntry, SubtaskRecord, UserRecord
 
 
 class InMemoryExecutionRepository:
@@ -20,6 +20,21 @@ class InMemoryExecutionRepository:
         return list(self._items.values())[-limit:][::-1]
 
 
+class InMemorySubtaskRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, SubtaskRecord] = {}
+
+    def create_many(self, subtasks: list[SubtaskRecord]) -> None:
+        for subtask in subtasks:
+            self._items[subtask.id] = subtask
+
+    def update(self, subtask: SubtaskRecord) -> None:
+        self._items[subtask.id] = subtask
+
+    def list_by_execution(self, execution_id: str) -> Sequence[SubtaskRecord]:
+        return [s for s in self._items.values() if s.execution_id == execution_id]
+
+
 class InMemoryAuditRepository:
     def __init__(self) -> None:
         self._items: list[AuditEventRecord] = []
@@ -29,6 +44,25 @@ class InMemoryAuditRepository:
 
     def list_by_execution(self, execution_id: str) -> Sequence[AuditEventRecord]:
         return [i for i in self._items if i.execution_id == execution_id]
+
+
+class InMemoryMemoryRepository:
+    def __init__(self) -> None:
+        self._items: dict[str, MemoryEntry] = {}
+
+    def add(self, entry: MemoryEntry) -> None:
+        self._items[entry.id] = entry
+
+    def list_for_project(self, project_id: str, status: str | None = None) -> Sequence[MemoryEntry]:
+        items = [e for e in self._items.values() if e.project_id == project_id]
+        if status:
+            return [e for e in items if e.status == status]
+        return items
+
+    def approve(self, entry_id: str) -> None:
+        item = self._items.get(entry_id)
+        if item:
+            item.status = "approved"
 
 
 class InMemorySessionRepository:

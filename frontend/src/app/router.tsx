@@ -1,43 +1,64 @@
 import { useEffect, useState } from 'react'
 
 import { LoginForm } from '../domains/auth/components/login-form'
+import { AgentsPage } from '../domains/agents/page'
 import { DashboardPage } from '../domains/dashboard/page'
 import { LandingPage } from '../domains/landing/page'
 import { LogsPage } from '../domains/logs/page'
 import { WorkspacePage } from '../domains/workspace/page'
 import { TopNav } from '../shared/components/top-nav'
-import { AuditEvent, Execution, getTimeline, listExecutions, login, logout } from '../shared/lib/api'
+import {
+  AgentCatalogItem,
+  AuditEvent,
+  Execution,
+  Subtask,
+  getAgentCatalog,
+  getSubtasks,
+  getTimeline,
+  listExecutions,
+  login,
+  logout,
+} from '../shared/lib/api'
 
 export function AppRouter() {
   const [section, setSection] = useState('landing')
   const [sessionId, setSessionId] = useState<string | null>(localStorage.getItem('session_id'))
   const [role, setRole] = useState<string | null>(localStorage.getItem('role'))
   const [executions, setExecutions] = useState<Execution[]>([])
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [agents, setAgents] = useState<AgentCatalogItem[]>([])
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loadingExecutions, setLoadingExecutions] = useState(false)
   const [executionsError, setExecutionsError] = useState<string | null>(null)
   const [loadingTimeline, setLoadingTimeline] = useState(false)
   const [timelineError, setTimelineError] = useState<string | null>(null)
+  const [loadingAgents, setLoadingAgents] = useState(false)
+  const [agentsError, setAgentsError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!sessionId) return
 
-    async function loadExecutions() {
+    async function loadBootData() {
       setLoadingExecutions(true)
+      setLoadingAgents(true)
       setExecutionsError(null)
+      setAgentsError(null)
+
       try {
-        const data = await listExecutions(sessionId)
-        setExecutions(data)
+        const [execData, agentData] = await Promise.all([listExecutions(sessionId), getAgentCatalog(sessionId)])
+        setExecutions(execData)
+        setAgents(agentData)
       } catch {
         setExecutionsError('Não foi possível carregar execuções.')
-        setExecutions([])
+        setAgentsError('Não foi possível carregar catálogo de agentes.')
       } finally {
         setLoadingExecutions(false)
+        setLoadingAgents(false)
       }
     }
 
-    loadExecutions()
+    loadBootData()
   }, [sessionId])
 
   async function handleLogin(email: string, password: string) {
@@ -56,12 +77,17 @@ export function AppRouter() {
     setLoadingTimeline(true)
     setTimelineError(null)
     try {
-      const timeline = await getTimeline(sessionId, executionId)
+      const [timeline, subtasksData] = await Promise.all([
+        getTimeline(sessionId, executionId),
+        getSubtasks(sessionId, executionId),
+      ])
       setEvents(timeline)
-      setSection('logs')
+      setSubtasks(subtasksData)
+      setSection('workspace')
     } catch {
-      setTimelineError('Falha ao carregar timeline da execução.')
+      setTimelineError('Falha ao carregar dados da execução.')
       setEvents([])
+      setSubtasks([])
       setSection('logs')
     } finally {
       setLoadingTimeline(false)
@@ -73,7 +99,7 @@ export function AppRouter() {
       try {
         await logout(sessionId)
       } catch {
-        // logout local mesmo com falha remota
+        // ignore remote logout errors
       }
     }
     localStorage.removeItem('session_id')
@@ -81,10 +107,13 @@ export function AppRouter() {
     setSessionId(null)
     setRole(null)
     setExecutions([])
+    setSubtasks([])
+    setAgents([])
     setEvents([])
     setSelectedExecutionId(null)
     setExecutionsError(null)
     setTimelineError(null)
+    setAgentsError(null)
     setSection('landing')
   }
 
@@ -102,6 +131,7 @@ export function AppRouter() {
         {section === 'workspace' && (
           <WorkspacePage
             executions={executions}
+            subtasks={subtasks}
             onSelectExecution={handleSelectExecution}
             isLoading={loadingExecutions}
             errorMessage={executionsError}
@@ -114,6 +144,9 @@ export function AppRouter() {
             isLoading={loadingTimeline}
             errorMessage={timelineError}
           />
+        )}
+        {section === 'agents' && (
+          <AgentsPage agents={agents} isLoading={loadingAgents} errorMessage={agentsError} />
         )}
       </main>
     </div>

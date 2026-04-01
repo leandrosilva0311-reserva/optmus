@@ -12,6 +12,7 @@ class AppConfig(BaseModel):
     redis_port: int = int(os.getenv("REDIS_PORT", "6379"))
     auth_session_ttl_seconds: int = int(os.getenv("AUTH_SESSION_TTL_SECONDS", "3600"))
     lock_ttl_seconds: int = int(os.getenv("EXECUTION_LOCK_TTL_SECONDS", "300"))
+    project_root: str = os.getenv("PROJECT_ROOT", "/workspace/optmus")
 
 
 config = AppConfig()

@@ -27,10 +27,11 @@ class AgentEngine:
         self._orchestrator = orchestrator
         self._telemetry = telemetry
 
-    def execute(self, objective: str, agent: str) -> ExecutionResult:
+    def execute(self, objective: str, agent: str, project_id: str = "default") -> ExecutionResult:
         execution_id = str(uuid4())
-        context = self._context_builder.build(execution_id, objective)
-        self._telemetry.emit(TelemetryEvent(execution_id, agent, "start", context.objective))
+        context = self._context_builder.build(project_id=project_id, objective=objective)
+        context_reason = "; ".join(item.reason for item in context.items[:3])
+        self._telemetry.emit(TelemetryEvent(execution_id, agent, "start", context_reason))
 
         self._guard.assert_iteration(1)
         self._guard.assert_non_destructive(objective)

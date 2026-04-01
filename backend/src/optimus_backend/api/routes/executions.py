@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from optimus_backend.api.dependencies import get_current_user, get_list_execution_use_case, get_start_execution_use_case
 from optimus_backend.application.use_cases.list_executions import ListExecutionsUseCase
 from optimus_backend.application.use_cases.start_execution import StartExecutionUseCase
-from optimus_backend.schemas.execution import AuditEventView, ExecutionView, QueueTaskResponse, TaskRequest
+from optimus_backend.schemas.execution import AuditEventView, ExecutionView, QueueTaskResponse, SubtaskView, TaskRequest
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -44,6 +44,29 @@ def list_executions(
             created_at=r.created_at,
         )
         for r in records
+    ]
+
+
+@router.get("/{execution_id}/subtasks", response_model=list[SubtaskView])
+def get_subtasks(
+    execution_id: str,
+    use_case: ListExecutionsUseCase = Depends(get_list_execution_use_case),
+    user: dict[str, str] = Depends(get_current_user),
+) -> list[SubtaskView]:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    subtasks = use_case.subtasks(execution_id)
+    return [
+        SubtaskView(
+            id=s.id,
+            execution_id=s.execution_id,
+            agent=s.agent,
+            title=s.title,
+            depends_on=s.depends_on,
+            status=s.status,
+            result_summary=s.result_summary,
+            created_at=s.created_at,
+        )
+        for s in subtasks
     ]
 
 

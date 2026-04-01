@@ -5,7 +5,7 @@ type TopNavProps = {
   onLogout: () => void
 }
 
-const sections = ['landing', 'dashboard', 'workspace', 'logs']
+const sections = ['landing', 'dashboard', 'workspace', 'logs', 'agents']
 
 export function TopNav({ section, onNavigate, isAuthenticated, onLogout }: TopNavProps) {
   return (

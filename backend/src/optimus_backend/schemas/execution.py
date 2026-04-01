@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class TaskRequest(BaseModel):
     project_id: str = Field(default="default")
     objective: str = Field(min_length=3)
-    agent: str = Field(default="dev")
+    agent: str = Field(default="dev_architect")
 
 
 class QueueTaskResponse(BaseModel):
@@ -23,6 +23,17 @@ class ExecutionView(BaseModel):
     summary: str | None
     error: str | None
     duration_ms: int | None
+    created_at: datetime
+
+
+class SubtaskView(BaseModel):
+    id: str
+    execution_id: str
+    agent: str
+    title: str
+    depends_on: list[str]
+    status: str
+    result_summary: str | None
     created_at: datetime
 
 
