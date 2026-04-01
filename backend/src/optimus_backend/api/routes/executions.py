@@ -64,6 +64,8 @@ def get_subtasks(
             depends_on=s.depends_on,
             status=s.status,
             result_summary=s.result_summary,
+            handoff_reason=s.handoff_reason,
+            attempt=s.attempt,
             created_at=s.created_at,
         )
         for s in subtasks

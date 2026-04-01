@@ -1,5 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
+export type Severity = 'low' | 'medium' | 'high' | 'critical'
 export type LoginResponse = { session_id: string; role: string }
 export type Execution = {
   id: string
@@ -84,4 +85,42 @@ export async function logout(sessionId: string): Promise<void> {
     headers: { 'X-Session-Id': sessionId },
   })
   if (!response.ok) throw new Error('Logout failed')
+}
+
+export type ScenarioDetail = {
+  execution_id: string
+  project_id: string
+  scenario_id: string
+  status: string
+  summary?: string | null
+  max_steps: number
+  max_tool_calls: number
+  max_duration_ms: number
+  created_at: string
+}
+
+export async function runScenario(sessionId: string, projectId: string, scenarioId: string, objective: string) {
+  const response = await fetch(`${API_BASE}/scenarios/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
+    body: JSON.stringify({ project_id: projectId, scenario_id: scenarioId, objective }),
+  })
+  if (!response.ok) throw new Error('Failed to run scenario')
+  return response.json()
+}
+
+export async function getScenarioDetail(sessionId: string, executionId: string): Promise<ScenarioDetail> {
+  const response = await fetch(`${API_BASE}/scenarios/${executionId}`, {
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Failed to load scenario detail')
+  return response.json()
+}
+
+export async function getScenarioTimeline(sessionId: string, executionId: string): Promise<AuditEvent[]> {
+  const response = await fetch(`${API_BASE}/scenarios/${executionId}/timeline`, {
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Failed to load scenario timeline')
+  return response.json()
 }

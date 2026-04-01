@@ -12,3 +12,4 @@ def test_app_has_core_routes() -> None:
     assert "/auth/logout" in paths
     assert "/executions/" in paths
     assert "/agents/catalog" in paths
+    assert "/scenarios/run" in paths

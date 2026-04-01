@@ -11,13 +11,17 @@ import {
   AgentCatalogItem,
   AuditEvent,
   Execution,
+  ScenarioDetail,
   Subtask,
   getAgentCatalog,
+  getScenarioDetail,
+  getScenarioTimeline,
   getSubtasks,
   getTimeline,
   listExecutions,
   login,
   logout,
+  runScenario,
 } from '../shared/lib/api'
 
 export function AppRouter() {
@@ -27,6 +31,7 @@ export function AppRouter() {
   const [executions, setExecutions] = useState<Execution[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [agents, setAgents] = useState<AgentCatalogItem[]>([])
+  const [scenarioDetail, setScenarioDetail] = useState<ScenarioDetail | null>(null)
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
   const [events, setEvents] = useState<AuditEvent[]>([])
   const [loadingExecutions, setLoadingExecutions] = useState(false)
@@ -77,20 +82,40 @@ export function AppRouter() {
     setLoadingTimeline(true)
     setTimelineError(null)
     try {
-      const [timeline, subtasksData] = await Promise.all([
+      const [timeline, subtasksData, detail] = await Promise.all([
         getTimeline(sessionId, executionId),
         getSubtasks(sessionId, executionId),
+        getScenarioDetail(sessionId, executionId),
       ])
       setEvents(timeline)
       setSubtasks(subtasksData)
+      setScenarioDetail(detail)
       setSection('workspace')
     } catch {
       setTimelineError('Falha ao carregar dados da execução.')
       setEvents([])
       setSubtasks([])
+      setScenarioDetail(null)
       setSection('logs')
     } finally {
       setLoadingTimeline(false)
+    }
+  }
+
+  async function handleRunScenario() {
+    if (!sessionId) return
+    try {
+      const result = await runScenario(sessionId, 'default', 'health_check', 'validar saúde operacional')
+      const [detail, timeline] = await Promise.all([
+        getScenarioDetail(sessionId, result.execution_id),
+        getScenarioTimeline(sessionId, result.execution_id),
+      ])
+      setScenarioDetail(detail)
+      setEvents(timeline)
+      setSelectedExecutionId(result.execution_id)
+      setSection('logs')
+    } catch {
+      setExecutionsError('Falha ao iniciar cenário operacional.')
     }
   }
 
@@ -109,6 +134,7 @@ export function AppRouter() {
     setExecutions([])
     setSubtasks([])
     setAgents([])
+    setScenarioDetail(null)
     setEvents([])
     setSelectedExecutionId(null)
     setExecutionsError(null)
@@ -132,7 +158,9 @@ export function AppRouter() {
           <WorkspacePage
             executions={executions}
             subtasks={subtasks}
+            scenarioDetail={scenarioDetail}
             onSelectExecution={handleSelectExecution}
+            onRunScenario={handleRunScenario}
             isLoading={loadingExecutions}
             errorMessage={executionsError}
           />

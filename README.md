@@ -1,31 +1,21 @@
 # Optimus Platform
 
-## Fase 3 (em implementação operacional)
+## Fase 4 (operacional)
 
-Esta entrega adiciona base funcional para tooling real, memória/contexto evoluídos, orquestração por subtarefas e UI operacional de agentes.
+### Regras explícitas implementadas
+1. **Janela de idempotência:** 30 minutos por `idempotency_key` (`project + scenario + objective_normalized`).
+2. **Rate limit:** por projeto e por tool (janela de 60s). Padrão: project=80/min, tool=20/min.
+3. **Prioridade de cutoff de budget:** `max_duration_ms` > `max_tool_calls` > `max_steps`.
+4. **Versionamento de memória:**
+   - nova entrada cria versão adicional;
+   - se conteúdo muda, versão anterior vira `deprecated` e nova referencia `supersedes_id`.
 
-### Padrões de segurança incorporados
-- Envelope padrão de tool execution: `status`, `duration_ms`, `truncated`, `error`.
-- Ordem fixa de execução de tooling: **policy -> guard(pre) -> execução -> guard(post) -> audit**.
-- Terminal tool com allowlist, timeout curto, limite de output e sem shell arbitrário.
-- Filesystem tool com sandbox em `project_root` e proteção contra path traversal.
-- HTTP tool com allowlist de domínios, restrição de verbos, timeout e retry controlado.
+### Endpoints de cenário
+- `POST /scenarios/run`
+- `GET /scenarios/{execution_id}`
+- `GET /scenarios/{execution_id}/timeline`
 
-### Fase 3 — fluxo funcional
-1. API cria execução e subtarefas com `depends_on`.
-2. Worker processa subtarefas respeitando dependências.
-3. Worker registra eventos de subtarefa e envelope sanitizado de tool execution.
-4. Resultado final alimenta memória persistente em estado `pending` para posterior aprovação (`approved`).
-5. Frontend exibe execução, subtarefas, timeline e catálogo de agentes com estados loading/empty/error.
-
-## Endpoints relevantes
-- `GET /agents/catalog`
-- `POST /executions/run`
-- `GET /executions/`
-- `GET /executions/{id}/subtasks`
-- `GET /executions/{id}/timeline`
-
-## Execução local
+### Execução local
 ```bash
 cd backend
 python -m venv .venv
@@ -43,4 +33,10 @@ arq optimus_backend.infrastructure.queue.worker.WorkerSettings
 cd frontend
 npm install
 npm run dev
+```
+
+### Testes
+```bash
+python -m compileall backend/src frontend/src
+cd backend && pytest -q
 ```

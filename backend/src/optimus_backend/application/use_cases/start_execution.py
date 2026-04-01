@@ -1,5 +1,6 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from uuid import uuid4
 
 from optimus_backend.core.orchestrator.service import Orchestrator
@@ -17,6 +18,11 @@ def build_event(execution_id: str, event_type: str, message: str) -> AuditEventR
     )
 
 
+def build_idempotency_key(project_id: str, scenario_id: str, objective: str) -> str:
+    normalized = " ".join(objective.lower().split())
+    return sha256(f"{project_id}|{scenario_id}|{normalized}".encode("utf-8")).hexdigest()
+
+
 class StartExecutionUseCase:
     def __init__(
         self,
@@ -25,15 +31,27 @@ class StartExecutionUseCase:
         audit: AuditRepository,
         queue: JobQueue,
         orchestrator: Orchestrator,
+        idempotency_window_minutes: int = 30,
     ) -> None:
         self._executions = executions
         self._subtasks = subtasks
         self._audit = audit
         self._queue = queue
         self._orchestrator = orchestrator
+        self._idempotency_window_minutes = idempotency_window_minutes
 
-    def execute(self, project_id: str, objective: str, agent: str) -> ExecutionRecord:
+    def execute(self, project_id: str, objective: str, agent: str, scenario_id: str = "default") -> ExecutionRecord:
         now = datetime.now(UTC)
+        idempotency_key = build_idempotency_key(project_id, scenario_id, objective)
+
+        for candidate in self._executions.list_recent(limit=200):
+            if candidate.idempotency_key != idempotency_key:
+                continue
+            if candidate.created_at < now - timedelta(minutes=self._idempotency_window_minutes):
+                continue
+            self._audit.append(build_event(candidate.id, "idempotency_reused", "Execution reused by idempotency key"))
+            return candidate
+
         record = ExecutionRecord(
             id=str(uuid4()),
             project_id=project_id,
@@ -45,6 +63,7 @@ class StartExecutionUseCase:
             duration_ms=None,
             created_at=now,
             updated_at=now,
+            idempotency_key=idempotency_key,
         )
         self._executions.create(record)
 
@@ -95,6 +114,14 @@ class FinalizeExecutionUseCase:
         )
         self._executions.update(updated)
         self._audit.append(build_event(execution_id, "completed", "Execution completed"))
+
+        latest = self._memory.latest_by_type(project_id, "decision")
+        supersedes_id = latest.id if latest else None
+        version = (latest.version + 1) if latest else 1
+
+        if latest and latest.content != summary[:500]:
+            latest.status = "deprecated"
+
         self._memory.add(
             MemoryEntry(
                 id=str(uuid4()),
@@ -105,6 +132,8 @@ class FinalizeExecutionUseCase:
                 content=summary[:500],
                 status="pending",
                 created_at=datetime.now(UTC),
+                version=version,
+                supersedes_id=supersedes_id,
             )
         )
 

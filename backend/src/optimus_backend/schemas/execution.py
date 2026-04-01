@@ -34,6 +34,8 @@ class SubtaskView(BaseModel):
     depends_on: list[str]
     status: str
     result_summary: str | None
+    handoff_reason: str | None
+    attempt: int
     created_at: datetime
 
 

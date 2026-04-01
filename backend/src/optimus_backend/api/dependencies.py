@@ -16,12 +16,14 @@ from optimus_backend.core.specialists.agents import AnalystAgent, BugHunterAgent
 from optimus_backend.core.telemetry.sink import TelemetrySink
 from optimus_backend.core.tooling.executor import ToolExecutor
 from optimus_backend.infrastructure.cache.redis_locks import RedisLockManager
+from optimus_backend.infrastructure.cache.redis_rate_limiter import RedisRateLimiter
 from optimus_backend.infrastructure.cache.redis_sessions import RedisSessionRepository
 from optimus_backend.infrastructure.persistence.in_memory import (
     InMemoryAuditRepository,
     InMemoryExecutionRepository,
     InMemoryLockManager,
     InMemoryMemoryRepository,
+    InMemoryRateLimiter,
     InMemorySessionRepository,
     InMemorySubtaskRepository,
     InMemoryUserRepository,
@@ -42,17 +44,6 @@ from optimus_backend.settings.config import config
 
 
 @lru_cache(maxsize=1)
-def get_tool_executor() -> ToolExecutor:
-    tools = {
-        "filesystem": FilesystemTool(config.project_root),
-        "terminal": TerminalTool(timeout_seconds=4),
-        "http": HttpTool(),
-    }
-    return ToolExecutor(tools=tools, policy=PolicyEngine(), guard=ExecutionGuard())
-
-
-
-@lru_cache(maxsize=1)
 def get_orchestrator() -> Orchestrator:
     provider = MockProvider()
     specialists = {
@@ -66,6 +57,24 @@ def get_orchestrator() -> Orchestrator:
 
 
 @lru_cache(maxsize=1)
+def get_tool_executor() -> ToolExecutor:
+    _, _, _, _, _, _, _, _, rate_limiter = get_repositories()
+    tools = {
+        "filesystem": FilesystemTool(config.project_root),
+        "terminal": TerminalTool(timeout_seconds=4),
+        "http": HttpTool(),
+    }
+    return ToolExecutor(
+        tools=tools,
+        policy=PolicyEngine(),
+        guard=ExecutionGuard(),
+        rate_limiter=rate_limiter,
+        project_limit=config.rate_limit_project_per_minute,
+        tool_limit=config.rate_limit_tool_per_minute,
+    )
+
+
+@lru_cache(maxsize=1)
 def get_engine() -> AgentEngine:
     return AgentEngine(
         context_builder=ContextBuilder(get_repositories()[3]),
@@ -76,7 +85,7 @@ def get_engine() -> AgentEngine:
 
 
 @lru_cache(maxsize=1)
-def get_repositories() -> tuple[object, object, object, object, object, object, object, object]:
+def get_repositories() -> tuple[object, object, object, object, object, object, object, object, object]:
     if config.app_env == "test":
         return (
             InMemoryExecutionRepository(),
@@ -87,6 +96,7 @@ def get_repositories() -> tuple[object, object, object, object, object, object, 
             InMemoryUserRepository([]),
             InMemoryJobQueue(),
             InMemoryLockManager(),
+            InMemoryRateLimiter(),
         )
 
     return (
@@ -98,38 +108,46 @@ def get_repositories() -> tuple[object, object, object, object, object, object, 
         PostgresUserRepository(config.database_url),
         ArqJobQueue(config.redis_host, config.redis_port),
         RedisLockManager(config.redis_url),
+        RedisRateLimiter(config.redis_url),
     )
 
 
 def get_auth_use_case() -> AuthenticateUserUseCase:
-    _, _, _, _, sessions, users, _, _ = get_repositories()
+    _, _, _, _, sessions, users, _, _, _ = get_repositories()
     return AuthenticateUserUseCase(users=users, sessions=sessions)
 
 
 def get_logout_use_case() -> LogoutUseCase:
-    _, _, _, _, sessions, _, _, _ = get_repositories()
+    _, _, _, _, sessions, _, _, _, _ = get_repositories()
     return LogoutUseCase(sessions=sessions)
 
 
 def get_start_execution_use_case() -> StartExecutionUseCase:
-    executions, subtasks, audit, _, _, _, queue, _ = get_repositories()
-    return StartExecutionUseCase(executions=executions, subtasks=subtasks, audit=audit, queue=queue, orchestrator=get_orchestrator())
+    executions, subtasks, audit, _, _, _, queue, _, _ = get_repositories()
+    return StartExecutionUseCase(
+        executions=executions,
+        subtasks=subtasks,
+        audit=audit,
+        queue=queue,
+        orchestrator=get_orchestrator(),
+        idempotency_window_minutes=config.idempotency_window_minutes,
+    )
 
 
 def get_finalize_execution_use_case() -> FinalizeExecutionUseCase:
-    executions, subtasks, audit, memory, _, _, _, _ = get_repositories()
+    executions, subtasks, audit, memory, _, _, _, _, _ = get_repositories()
     return FinalizeExecutionUseCase(executions=executions, subtasks=subtasks, audit=audit, memory=memory)
 
 
 def get_list_execution_use_case() -> ListExecutionsUseCase:
-    executions, subtasks, audit, _, _, _, _, _ = get_repositories()
+    executions, subtasks, audit, _, _, _, _, _, _ = get_repositories()
     return ListExecutionsUseCase(executions=executions, subtasks=subtasks, audit=audit)
 
 
 def get_current_user(x_session_id: str = Header(default="", alias="X-Session-Id")) -> dict[str, str]:
     if not x_session_id:
         raise HTTPException(status_code=401, detail="missing session")
-    _, _, _, _, sessions, users, _, _ = get_repositories()
+    _, _, _, _, sessions, users, _, _, _ = get_repositories()
     user_id = sessions.get_user_id(x_session_id)
     if not user_id:
         raise HTTPException(status_code=401, detail="invalid session")

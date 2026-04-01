@@ -16,7 +16,13 @@ CREATE TABLE IF NOT EXISTS executions (
   error TEXT,
   duration_ms INTEGER,
   created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
+  updated_at TIMESTAMPTZ NOT NULL,
+  idempotency_key TEXT NOT NULL DEFAULT '',
+  max_steps INTEGER NOT NULL DEFAULT 25,
+  max_tool_calls INTEGER NOT NULL DEFAULT 50,
+  max_duration_ms INTEGER NOT NULL DEFAULT 120000,
+  steps_used INTEGER NOT NULL DEFAULT 0,
+  tool_calls_used INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS subtasks (
@@ -28,7 +34,9 @@ CREATE TABLE IF NOT EXISTS subtasks (
   status TEXT NOT NULL,
   result_summary TEXT,
   created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
+  updated_at TIMESTAMPTZ NOT NULL,
+  handoff_reason TEXT,
+  attempt INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS audit_events (
@@ -47,7 +55,9 @@ CREATE TABLE IF NOT EXISTS memory_entries (
   confidence REAL NOT NULL,
   content TEXT NOT NULL,
   status TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL
+  created_at TIMESTAMPTZ NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  supersedes_id TEXT
 );
 
 INSERT INTO users(id, email, password_hash, role)

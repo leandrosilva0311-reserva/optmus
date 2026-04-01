@@ -64,6 +64,12 @@ class InMemoryMemoryRepository:
         if item:
             item.status = "approved"
 
+    def latest_by_type(self, project_id: str, entry_type: str):
+        candidates = [e for e in self._items.values() if e.project_id == project_id and e.entry_type == entry_type]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda e: e.version, reverse=True)[0]
+
 
 class InMemorySessionRepository:
     def __init__(self) -> None:
@@ -105,3 +111,16 @@ class InMemoryLockManager:
 
     def release(self, key: str) -> None:
         self._locks.discard(key)
+
+
+class InMemoryRateLimiter:
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+
+    def allow(self, project_id: str, tool_name: str, project_limit: int, tool_limit: int, ttl_seconds: int = 60) -> bool:
+        _ = ttl_seconds
+        pk = f"p:{project_id}"
+        tk = f"t:{project_id}:{tool_name}"
+        self._counts[pk] = self._counts.get(pk, 0) + 1
+        self._counts[tk] = self._counts.get(tk, 0) + 1
+        return self._counts[pk] <= project_limit and self._counts[tk] <= tool_limit
