@@ -9,4 +9,5 @@ def test_app_has_core_routes() -> None:
     paths = {route.path for route in app.routes}
     assert "/health/" in paths
     assert "/auth/login" in paths
+    assert "/auth/logout" in paths
     assert "/executions/" in paths

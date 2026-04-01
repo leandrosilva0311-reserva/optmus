@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 
-from optimus_backend.api.dependencies import get_auth_use_case
-from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase
-from optimus_backend.schemas.auth import LoginRequest, LoginResponse
+from optimus_backend.api.dependencies import get_auth_use_case, get_logout_use_case
+from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase, LogoutUseCase
+from optimus_backend.schemas.auth import LoginRequest, LoginResponse, LogoutResponse
 from optimus_backend.settings.config import config
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -15,3 +15,14 @@ def login(payload: LoginRequest, auth: AuthenticateUserUseCase = Depends(get_aut
     except PermissionError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     return LoginResponse(session_id=result.session_id, role=result.role)
+
+
+@router.post("/logout", response_model=LogoutResponse)
+def logout(
+    logout_use_case: LogoutUseCase = Depends(get_logout_use_case),
+    session_id: str = Header(default="", alias="X-Session-Id"),
+) -> LogoutResponse:
+    if not session_id:
+        raise HTTPException(status_code=401, detail="missing session")
+    logout_use_case.execute(session_id)
+    return LogoutResponse(status="ok")

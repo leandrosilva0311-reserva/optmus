@@ -48,10 +48,14 @@ class InMemorySessionRepository:
 
 class InMemoryUserRepository:
     def __init__(self, users: list[UserRecord]) -> None:
-        self._users = {u.email: u for u in users}
+        self._users_by_email = {u.email: u for u in users}
+        self._users_by_id = {u.id: u for u in users}
 
     def find_by_email(self, email: str) -> UserRecord | None:
-        return self._users.get(email)
+        return self._users_by_email.get(email)
+
+    def find_by_id(self, user_id: str) -> UserRecord | None:
+        return self._users_by_id.get(user_id)
 
 
 class InMemoryLockManager:

@@ -24,6 +24,7 @@ class SessionRepository(Protocol):
 
 class UserRepository(Protocol):
     def find_by_email(self, email: str) -> UserRecord | None: ...
+    def find_by_id(self, user_id: str) -> UserRecord | None: ...
 
 
 class JobQueue(Protocol):

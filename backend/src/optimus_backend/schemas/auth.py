@@ -9,3 +9,7 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     session_id: str
     role: str
+
+
+class LogoutResponse(BaseModel):
+    status: str

@@ -25,3 +25,6 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 addopts = "-q"
+markers = [
+  "integration: tests that require real PostgreSQL/Redis/ARQ runtime"
+]

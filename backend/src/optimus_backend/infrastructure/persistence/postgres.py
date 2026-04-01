@@ -1,7 +1,6 @@
 from collections.abc import Sequence
-from datetime import UTC, datetime
 
-from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord
+from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, UserRecord
 
 try:
     import psycopg
@@ -108,5 +107,22 @@ class PostgresAuditRepository:
         return [AuditEventRecord(*row) for row in rows]
 
 
-def now_utc() -> datetime:
-    return datetime.now(UTC)
+class PostgresUserRepository:
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+
+    def find_by_email(self, email: str) -> UserRecord | None:
+        if psycopg is None:
+            raise RuntimeError("psycopg not installed")
+        with psycopg.connect(self._dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, email, password_hash, role FROM users WHERE email=%s", (email,))
+            row = cur.fetchone()
+        return UserRecord(*row) if row else None
+
+    def find_by_id(self, user_id: str) -> UserRecord | None:
+        if psycopg is None:
+            raise RuntimeError("psycopg not installed")
+        with psycopg.connect(self._dsn) as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, email, password_hash, role FROM users WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+        return UserRecord(*row) if row else None

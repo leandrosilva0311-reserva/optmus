@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
 
+import { LoginForm } from '../domains/auth/components/login-form'
 import { DashboardPage } from '../domains/dashboard/page'
 import { LandingPage } from '../domains/landing/page'
 import { LogsPage } from '../domains/logs/page'
 import { WorkspacePage } from '../domains/workspace/page'
-import { LoginForm } from '../domains/auth/components/login-form'
 import { TopNav } from '../shared/components/top-nav'
-import { AuditEvent, Execution, getTimeline, listExecutions, login } from '../shared/lib/api'
+import { AuditEvent, Execution, getTimeline, listExecutions, login, logout } from '../shared/lib/api'
 
 export function AppRouter() {
   const [section, setSection] = useState('landing')
   const [sessionId, setSessionId] = useState<string | null>(localStorage.getItem('session_id'))
+  const [role, setRole] = useState<string | null>(localStorage.getItem('role'))
   const [executions, setExecutions] = useState<Execution[]>([])
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
   const [events, setEvents] = useState<AuditEvent[]>([])
@@ -42,6 +43,8 @@ export function AppRouter() {
   async function handleLogin(email: string, password: string) {
     const data = await login(email, password)
     localStorage.setItem('session_id', data.session_id)
+    localStorage.setItem('role', data.role)
+    setRole(data.role)
     setSessionId(data.session_id)
     setSection('dashboard')
   }
@@ -65,9 +68,18 @@ export function AppRouter() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    if (sessionId) {
+      try {
+        await logout(sessionId)
+      } catch {
+        // logout local mesmo com falha remota
+      }
+    }
     localStorage.removeItem('session_id')
+    localStorage.removeItem('role')
     setSessionId(null)
+    setRole(null)
     setExecutions([])
     setEvents([])
     setSelectedExecutionId(null)
@@ -76,11 +88,13 @@ export function AppRouter() {
     setSection('landing')
   }
 
+  const canAccessPrivate = Boolean(sessionId) && Boolean(role)
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <TopNav section={section} onNavigate={setSection} isAuthenticated={Boolean(sessionId)} onLogout={handleLogout} />
+      <TopNav section={section} onNavigate={setSection} isAuthenticated={canAccessPrivate} onLogout={handleLogout} />
       <main className="mx-auto max-w-6xl px-6 py-8">
-        {!sessionId && section !== 'landing' ? <LoginForm onLogin={handleLogin} /> : null}
+        {!canAccessPrivate && section !== 'landing' ? <LoginForm onLogin={handleLogin} /> : null}
         {section === 'landing' && <LandingPage />}
         {section === 'dashboard' && (
           <DashboardPage executions={executions} isLoading={loadingExecutions} errorMessage={executionsError} />

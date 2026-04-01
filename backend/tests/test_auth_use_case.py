@@ -1,13 +1,13 @@
-from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase
+from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase, LogoutUseCase
 from optimus_backend.domain.entities import UserRecord
 from optimus_backend.infrastructure.auth.security import hash_password
 from optimus_backend.infrastructure.persistence.in_memory import InMemorySessionRepository, InMemoryUserRepository
 
 
 def test_authenticate_success() -> None:
-    users = InMemoryUserRepository([
-        UserRecord(id="u1", email="admin@optimus.local", password_hash=hash_password("admin12345"), role="admin")
-    ])
+    users = InMemoryUserRepository(
+        [UserRecord(id="u1", email="admin@optimus.local", password_hash=hash_password("admin12345"), role="admin")]
+    )
     sessions = InMemorySessionRepository()
 
     use_case = AuthenticateUserUseCase(users=users, sessions=sessions)
@@ -18,9 +18,9 @@ def test_authenticate_success() -> None:
 
 
 def test_authenticate_invalid_password() -> None:
-    users = InMemoryUserRepository([
-        UserRecord(id="u1", email="admin@optimus.local", password_hash=hash_password("admin12345"), role="admin")
-    ])
+    users = InMemoryUserRepository(
+        [UserRecord(id="u1", email="admin@optimus.local", password_hash=hash_password("admin12345"), role="admin")]
+    )
     sessions = InMemorySessionRepository()
     use_case = AuthenticateUserUseCase(users=users, sessions=sessions)
 
@@ -30,3 +30,16 @@ def test_authenticate_invalid_password() -> None:
         assert "invalid credentials" in str(exc)
     else:
         raise AssertionError("PermissionError expected")
+
+
+def test_logout_revokes_session() -> None:
+    users = InMemoryUserRepository(
+        [UserRecord(id="u1", email="admin@optimus.local", password_hash=hash_password("admin12345"), role="admin")]
+    )
+    sessions = InMemorySessionRepository()
+    auth = AuthenticateUserUseCase(users=users, sessions=sessions)
+
+    result = auth.execute("admin@optimus.local", "admin12345")
+    LogoutUseCase(sessions).execute(result.session_id)
+
+    assert sessions.get_user_id(result.session_id) is None

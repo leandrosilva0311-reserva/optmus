@@ -24,3 +24,11 @@ class AuthenticateUserUseCase:
         session_id = generate_session_id()
         self._sessions.save(session_id=session_id, user_id=user.id, ttl_seconds=ttl_seconds)
         return AuthResult(session_id=session_id, user_id=user.id, role=user.role)
+
+
+class LogoutUseCase:
+    def __init__(self, sessions: SessionRepository) -> None:
+        self._sessions = sessions
+
+    def execute(self, session_id: str) -> None:
+        self._sessions.delete(session_id)

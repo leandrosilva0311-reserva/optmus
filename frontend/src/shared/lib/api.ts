@@ -44,3 +44,11 @@ export async function getTimeline(sessionId: string, executionId: string): Promi
   if (!response.ok) throw new Error('Failed to load timeline')
   return response.json()
 }
+
+export async function logout(sessionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Logout failed')
+}
