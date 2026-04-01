@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS executions (
   project_id TEXT NOT NULL,
   objective TEXT NOT NULL,
   agent TEXT NOT NULL,
+  scenario_id TEXT NOT NULL DEFAULT 'default',
   status TEXT NOT NULL,
   summary TEXT,
   error TEXT,

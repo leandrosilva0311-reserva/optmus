@@ -8,6 +8,7 @@ class ExecutionRecord:
     project_id: str
     objective: str
     agent: str
+    scenario_id: str
     status: str
     summary: str | None
     error: str | None

@@ -12,6 +12,7 @@ from optimus_backend.core.execution_guard.guard import ExecutionGuard
 from optimus_backend.core.orchestrator.service import Orchestrator
 from optimus_backend.core.policy.engine import PolicyEngine
 from optimus_backend.core.provider.base import MockProvider
+from optimus_backend.core.scenarios.catalog import ScenarioCatalog
 from optimus_backend.core.specialists.agents import AnalystAgent, BugHunterAgent, DevArchitectAgent, OpsSentinelAgent, QAAgent
 from optimus_backend.core.telemetry.sink import TelemetrySink
 from optimus_backend.core.tooling.executor import ToolExecutor
@@ -39,6 +40,14 @@ from optimus_backend.infrastructure.queue.arq_queue import ArqJobQueue
 from optimus_backend.infrastructure.queue.in_memory_queue import InMemoryJobQueue
 from optimus_backend.infrastructure.tools.filesystem_tool import FilesystemTool
 from optimus_backend.infrastructure.tools.http_tool import HttpTool
+from optimus_backend.infrastructure.tools.kaiso_log_correlation_tool import (
+    InMemoryKaisoLogCorrelationProvider,
+    KaisoLogCorrelationTool,
+)
+from optimus_backend.infrastructure.tools.kaiso_queue_inspection_tool import (
+    InMemoryKaisoQueueInspectionProvider,
+    KaisoQueueInspectionTool,
+)
 from optimus_backend.infrastructure.tools.terminal_tool import TerminalTool
 from optimus_backend.settings.config import config
 
@@ -63,6 +72,8 @@ def get_tool_executor() -> ToolExecutor:
         "filesystem": FilesystemTool(config.project_root),
         "terminal": TerminalTool(timeout_seconds=4),
         "http": HttpTool(),
+        "kaiso_log_correlation": KaisoLogCorrelationTool(InMemoryKaisoLogCorrelationProvider()),
+        "kaiso_queue_inspection": KaisoQueueInspectionTool(InMemoryKaisoQueueInspectionProvider()),
     }
     return ToolExecutor(
         tools=tools,
@@ -72,6 +83,11 @@ def get_tool_executor() -> ToolExecutor:
         project_limit=config.rate_limit_project_per_minute,
         tool_limit=config.rate_limit_tool_per_minute,
     )
+
+
+@lru_cache(maxsize=1)
+def get_scenario_catalog() -> ScenarioCatalog:
+    return ScenarioCatalog()
 
 
 @lru_cache(maxsize=1)

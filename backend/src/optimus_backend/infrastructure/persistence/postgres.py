@@ -18,15 +18,16 @@ class PostgresExecutionRepository:
         with psycopg.connect(self._dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO executions(id, project_id, objective, agent, status, summary, error, duration_ms, created_at, updated_at,
+                INSERT INTO executions(id, project_id, objective, agent, scenario_id, status, summary, error, duration_ms, created_at, updated_at,
                                        idempotency_key, max_steps, max_tool_calls, max_duration_ms, steps_used, tool_calls_used)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     record.id,
                     record.project_id,
                     record.objective,
                     record.agent,
+                    record.scenario_id,
                     record.status,
                     record.summary,
                     record.error,
@@ -73,7 +74,7 @@ class PostgresExecutionRepository:
         with psycopg.connect(self._dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, project_id, objective, agent, status, summary, error, duration_ms, created_at, updated_at,
+                SELECT id, project_id, objective, agent, scenario_id, status, summary, error, duration_ms, created_at, updated_at,
                        idempotency_key, max_steps, max_tool_calls, max_duration_ms, steps_used, tool_calls_used
                 FROM executions WHERE id=%s
                 """,
@@ -88,7 +89,7 @@ class PostgresExecutionRepository:
         with psycopg.connect(self._dsn) as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, project_id, objective, agent, status, summary, error, duration_ms, created_at, updated_at,
+                SELECT id, project_id, objective, agent, scenario_id, status, summary, error, duration_ms, created_at, updated_at,
                        idempotency_key, max_steps, max_tool_calls, max_duration_ms, steps_used, tool_calls_used
                 FROM executions ORDER BY created_at DESC LIMIT %s
                 """,

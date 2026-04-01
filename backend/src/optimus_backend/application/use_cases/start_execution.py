@@ -57,6 +57,7 @@ class StartExecutionUseCase:
             project_id=project_id,
             objective=objective,
             agent=agent,
+            scenario_id=scenario_id,
             status="queued",
             summary=None,
             error=None,
