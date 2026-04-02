@@ -122,7 +122,8 @@ def get_billing_command_model() -> object:
 
 @lru_cache(maxsize=1)
 def get_billing_cycle_closer() -> BillingCycleCloser:
-    return BillingCycleCloser(read_model=get_billing_read_model(), command_model=get_billing_command_model())
+    _, _, _, _, _, _, _, lock_manager, _ = get_repositories()
+    return BillingCycleCloser(read_model=get_billing_read_model(), command_model=get_billing_command_model(), lock_manager=lock_manager)
 
 
 @lru_cache(maxsize=1)

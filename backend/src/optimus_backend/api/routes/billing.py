@@ -16,6 +16,7 @@ from optimus_backend.schemas.billing import (
     BillingCycleRunDueRequest,
     BillingCycleHistoryItemResponse,
     BillingCycleHistoryResponse,
+    BillingCycleRunDueResponse,
     BillingInvoiceDetailResponse,
     BillingInvoiceItemResponse,
     BillingInvoiceResponse,
@@ -351,10 +352,14 @@ def invoice_detail(
 @router.get("/subscription/history", response_model=BillingPlanChangeHistoryResponse)
 def subscription_change_history(
     project_id: str = Query(...),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     user: dict[str, str] = Depends(get_current_user),
 ) -> BillingPlanChangeHistoryResponse:
     ensure_role(user, {"admin", "operator", "viewer"})
     items = get_billing_read_model().list_plan_changes(project_id)
+    filtered = [item for item in items if status is None or item.status == status]
     return BillingPlanChangeHistoryResponse(
         project_id=project_id,
         items=[
@@ -366,7 +371,7 @@ def subscription_change_history(
                 effective_at=change.effective_at,
                 status=change.status,
             )
-            for change in items
+            for change in filtered[offset : offset + limit]
         ],
     )
 
@@ -374,10 +379,20 @@ def subscription_change_history(
 @router.get("/cycles/history", response_model=BillingCycleHistoryResponse)
 def cycle_history(
     project_id: str = Query(...),
+    period_start: datetime | None = Query(default=None),
+    period_end: datetime | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     user: dict[str, str] = Depends(get_current_user),
 ) -> BillingCycleHistoryResponse:
     ensure_role(user, {"admin", "operator", "viewer"})
     items = get_billing_read_model().list_cycle_closures(project_id)
+    filtered = [
+        item
+        for item in items
+        if (period_start is None or item.period_start >= period_start)
+        and (period_end is None or item.period_end <= period_end)
+    ]
     return BillingCycleHistoryResponse(
         project_id=project_id,
         items=[
@@ -390,28 +405,48 @@ def cycle_history(
                 closed_by=item.closed_by,
                 created_at=item.created_at,
             )
-            for item in items
+            for item in filtered[offset : offset + limit]
         ],
     )
 
 
-@router.post("/cycle/run-due", response_model=list[BillingInvoiceResponse])
+@router.post("/cycle/run-due", response_model=BillingCycleRunDueResponse)
 def run_due_cycle_closure(
     payload: BillingCycleRunDueRequest,
     user: dict[str, str] = Depends(get_current_user),
-) -> list[BillingInvoiceResponse]:
+) -> BillingCycleRunDueResponse:
     ensure_role(user, {"admin", "operator"})
-    invoices = get_billing_cycle_closer().run_due_cycles(payload.as_of, actor_id=user["user_id"])
-    _log_billing_event("billing_cycle_due_job_run", user, as_of=payload.as_of.isoformat(), closed_count=str(len(invoices)))
-    return [
-        BillingInvoiceResponse(
-            id=invoice.id,
-            project_id=invoice.project_id,
-            period_start=invoice.period_start,
-            period_end=invoice.period_end,
-            status=invoice.status,
-            total_cents=invoice.total_cents,
-            created_at=invoice.created_at,
-        )
-        for invoice in invoices
-    ]
+    try:
+        report = get_billing_cycle_closer().run_due_cycles(payload.as_of, actor_id=user["user_id"])
+    except RuntimeError as exc:
+        _raise_billing_error(409, "billing_job_conflict", str(exc))
+    _log_billing_event(
+        "billing_cycle_due_job_run",
+        user,
+        as_of=payload.as_of.isoformat(),
+        processed=str(report.processed_subscriptions),
+        generated=str(report.generated_invoices),
+        failed=str(report.failed_subscriptions),
+        duration_ms=str(report.duration_ms),
+    )
+    return BillingCycleRunDueResponse(
+        started_at=report.started_at,
+        finished_at=report.finished_at,
+        processed_subscriptions=report.processed_subscriptions,
+        generated_invoices=report.generated_invoices,
+        failed_subscriptions=report.failed_subscriptions,
+        duration_ms=report.duration_ms,
+        failures=report.failures,
+        invoices=[
+            BillingInvoiceResponse(
+                id=invoice.id,
+                project_id=invoice.project_id,
+                period_start=invoice.period_start,
+                period_end=invoice.period_end,
+                status=invoice.status,
+                total_cents=invoice.total_cents,
+                created_at=invoice.created_at,
+            )
+            for invoice in report.invoices
+        ],
+    )

@@ -113,3 +113,14 @@ class BillingCycleHistoryItemResponse(BaseModel):
 class BillingCycleHistoryResponse(BaseModel):
     project_id: str
     items: list[BillingCycleHistoryItemResponse]
+
+
+class BillingCycleRunDueResponse(BaseModel):
+    started_at: datetime
+    finished_at: datetime
+    processed_subscriptions: int
+    generated_invoices: int
+    failed_subscriptions: int
+    duration_ms: int
+    failures: list[str]
+    invoices: list[BillingInvoiceResponse]
