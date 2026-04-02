@@ -80,3 +80,18 @@ def test_subscription_create_then_activate() -> None:
     activated = store.activate_subscription("p-ops")
     assert activated.status == "active"
     assert activated.renews_at is not None
+
+
+def test_invoice_status_transition_history() -> None:
+    store = InMemoryBillingStore()
+    store.create_or_activate_subscription("p-status", "starter")
+    invoice = store.close_billing_cycle(
+        "p-status",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        datetime(2026, 1, 31, tzinfo=UTC),
+    )
+    updated = store.update_invoice_status(invoice.id, "issued", actor_id="u-admin")
+    assert updated.status == "issued"
+    transitions = store.list_invoice_status_transitions(invoice.id)
+    assert len(transitions) == 2
+    assert transitions[-1].to_status == "issued"

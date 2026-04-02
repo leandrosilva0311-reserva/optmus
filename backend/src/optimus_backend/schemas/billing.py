@@ -100,6 +100,30 @@ class BillingInvoiceDetailResponse(BillingInvoiceResponse):
     items: list[BillingInvoiceItemResponse]
 
 
+class BillingInvoiceStatusChangeRequest(BaseModel):
+    invoice_id: str
+    to_status: str
+
+
+class BillingInvoiceStatusTransitionResponse(BaseModel):
+    id: str
+    invoice_id: str
+    from_status: str
+    to_status: str
+    changed_by: str
+    changed_at: datetime
+
+
+class BillingInvoiceHistoryEntryResponse(BillingInvoiceResponse):
+    item_count: int
+    transitions: list[BillingInvoiceStatusTransitionResponse]
+
+
+class BillingInvoiceHistoryResponse(BaseModel):
+    project_id: str
+    items: list[BillingInvoiceHistoryEntryResponse]
+
+
 class BillingCycleHistoryItemResponse(BaseModel):
     id: str
     period_start: datetime
@@ -124,3 +148,17 @@ class BillingCycleRunDueResponse(BaseModel):
     duration_ms: int
     failures: list[str]
     invoices: list[BillingInvoiceResponse]
+
+
+class BillingCycleSchedulerConfigResponse(BaseModel):
+    cron_expression: str
+    retry_delays_seconds: list[int]
+    lock_window_scope: str
+
+
+class BillingSchedulerRunResponse(BaseModel):
+    success: bool
+    attempts: int
+    alert_required: bool
+    error: str | None
+    report: BillingCycleRunDueResponse | None

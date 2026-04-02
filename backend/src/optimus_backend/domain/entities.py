@@ -148,3 +148,13 @@ class BillingCycleClosureRecord:
     usage_units: int
     closed_by: str
     created_at: datetime
+
+
+@dataclass(slots=True)
+class InvoiceStatusTransitionRecord:
+    id: str
+    invoice_id: str
+    from_status: str
+    to_status: str
+    changed_by: str
+    changed_at: datetime

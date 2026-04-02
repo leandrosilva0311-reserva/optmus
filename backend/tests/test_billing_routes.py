@@ -132,3 +132,28 @@ def test_run_due_cycle_route_conflict() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "billing_job_conflict"
+
+
+def test_invoice_status_change_route() -> None:
+    store = InMemoryBillingStore()
+    sub = store.create_or_activate_subscription("p-inv", "starter")
+    assert sub.status == "active"
+    invoice = store.close_billing_cycle("p-inv", datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 31, tzinfo=UTC))
+    app.dependency_overrides[dependencies.get_current_user] = _override_admin_user
+    app.dependency_overrides[dependencies.get_billing_command_model] = lambda: store
+
+    with TestClient(app) as client:
+        response = client.post("/billing/invoices/status", json={"invoice_id": invoice.id, "to_status": "issued"})
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "issued"
+
+
+def test_scheduler_config_endpoint() -> None:
+    app.dependency_overrides[dependencies.get_current_user] = _override_admin_user
+    with TestClient(app) as client:
+        response = client.get("/billing/cycle/scheduler/config")
+    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["cron_expression"] == "0 * * * *"

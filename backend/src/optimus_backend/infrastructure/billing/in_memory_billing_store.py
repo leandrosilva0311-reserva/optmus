@@ -5,6 +5,7 @@ from uuid import uuid4
 from optimus_backend.domain.entities import (
     BillingCycleClosureRecord,
     InvoiceRecord,
+    InvoiceStatusTransitionRecord,
     InvoiceItemRecord,
     PlanDefinitionRecord,
     SubscriptionPlanChangeRecord,
@@ -34,6 +35,7 @@ class InMemoryBillingStore:
         }
         self._changes: list[SubscriptionPlanChangeRecord] = []
         self._invoices: list[InvoiceRecord] = []
+        self._invoice_transitions: list[InvoiceStatusTransitionRecord] = []
         self._invoice_items: list[InvoiceItemRecord] = []
         self._closures: list[BillingCycleClosureRecord] = []
         self._usage: list[UsageHistoryRecord] = []
@@ -55,6 +57,9 @@ class InMemoryBillingStore:
 
     def list_invoice_items(self, invoice_id: str) -> list[InvoiceItemRecord]:
         return [i for i in self._invoice_items if i.invoice_id == invoice_id]
+
+    def list_invoice_status_transitions(self, invoice_id: str) -> list[InvoiceStatusTransitionRecord]:
+        return [i for i in self._invoice_transitions if i.invoice_id == invoice_id]
 
     def usage_history(self, project_id: str, date_from: datetime, date_to: datetime) -> list[UsageHistoryRecord]:
         return [u for u in self._usage if u.event_date and date_from <= u.event_date <= date_to]
@@ -168,6 +173,9 @@ class InMemoryBillingStore:
             created_at=datetime.now(UTC),
         )
         self._invoices.append(invoice)
+        self._invoice_transitions.append(
+            InvoiceStatusTransitionRecord(str(uuid4()), invoice.id, "none", "open", "system", datetime.now(UTC))
+        )
         self._invoice_items.append(
             InvoiceItemRecord(str(uuid4()), invoice.id, "subscription_fee", 1, plan.monthly_price_cents, plan.monthly_price_cents, f"Plano {plan.name}")
         )
@@ -194,3 +202,15 @@ class InMemoryBillingStore:
                 self._subscriptions[project_id] = replace(sub, plan_id=change.to_plan_id)
                 self._changes[idx] = replace(change, status="applied")
         return invoice
+
+    def update_invoice_status(self, invoice_id: str, to_status: str, actor_id: str = "system") -> InvoiceRecord:
+        for idx, inv in enumerate(self._invoices):
+            if inv.id != invoice_id:
+                continue
+            updated = replace(inv, status=to_status)
+            self._invoices[idx] = updated
+            self._invoice_transitions.append(
+                InvoiceStatusTransitionRecord(str(uuid4()), invoice_id, inv.status, to_status, actor_id, datetime.now(UTC))
+            )
+            return updated
+        raise KeyError("invoice not found")

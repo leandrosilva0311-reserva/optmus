@@ -7,6 +7,7 @@ from optimus_backend.domain.entities import (
     BillingCycleClosureRecord,
     ExecutionRecord,
     InvoiceRecord,
+    InvoiceStatusTransitionRecord,
     InvoiceItemRecord,
     MemoryEntry,
     PlanDefinitionRecord,
@@ -82,6 +83,7 @@ class BillingReadModel(Protocol):
     def list_plan_changes(self, project_id: str) -> Sequence[SubscriptionPlanChangeRecord]: ...
     def list_cycle_closures(self, project_id: str) -> Sequence[BillingCycleClosureRecord]: ...
     def list_active_subscriptions_due(self, as_of: datetime) -> Sequence[SubscriptionRecord]: ...
+    def list_invoice_status_transitions(self, invoice_id: str) -> Sequence[InvoiceStatusTransitionRecord]: ...
 
 
 class BillingCommandModel(Protocol):
@@ -97,3 +99,4 @@ class BillingCommandModel(Protocol):
         period_end: datetime,
         actor_id: str = "system",
     ) -> InvoiceRecord: ...
+    def update_invoice_status(self, invoice_id: str, to_status: str, actor_id: str = "system") -> InvoiceRecord: ...

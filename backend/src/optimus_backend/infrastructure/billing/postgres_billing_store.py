@@ -4,6 +4,7 @@ from uuid import uuid4
 from optimus_backend.domain.entities import (
     BillingCycleClosureRecord,
     InvoiceRecord,
+    InvoiceStatusTransitionRecord,
     InvoiceItemRecord,
     PlanDefinitionRecord,
     SubscriptionPlanChangeRecord,
@@ -81,6 +82,20 @@ class PostgresBillingStore:
             )
             rows = cur.fetchall()
         return [InvoiceItemRecord(*row) for row in rows]
+
+    def list_invoice_status_transitions(self, invoice_id: str) -> list[InvoiceStatusTransitionRecord]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, invoice_id, from_status, to_status, changed_by, changed_at
+                FROM invoice_status_transitions
+                WHERE invoice_id=%s
+                ORDER BY changed_at DESC
+                """,
+                (invoice_id,),
+            )
+            rows = cur.fetchall()
+        return [InvoiceStatusTransitionRecord(*row) for row in rows]
 
     def usage_history(self, project_id: str, date_from: datetime, date_to: datetime) -> list[UsageHistoryRecord]:
         with self._conn() as conn, conn.cursor() as cur:
@@ -261,6 +276,13 @@ class PostgresBillingStore:
                     (invoice.id, invoice.project_id, invoice.period_start.date(), invoice.period_end.date(), invoice.status, invoice.total_cents, invoice.created_at),
                 )
                 cur.execute(
+                    """
+                    INSERT INTO invoice_status_transitions(id, invoice_id, from_status, to_status, changed_by, changed_at)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    """,
+                    (str(uuid4()), invoice.id, "none", "open", actor_id, datetime.now(UTC)),
+                )
+                cur.execute(
                     "INSERT INTO invoice_items(id, invoice_id, item_type, quantity, unit_price_cents, total_cents, description) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                     (str(uuid4()), invoice.id, "subscription_fee", 1, plan.monthly_price_cents, plan.monthly_price_cents, f"Plano {plan.name}"),
                 )
@@ -315,3 +337,37 @@ class PostgresBillingStore:
                 return InvoiceRecord(*existing)
             raise
         return invoice
+
+    def update_invoice_status(self, invoice_id: str, to_status: str, actor_id: str = "system") -> InvoiceRecord:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, project_id, period_start, period_end, status, total_cents, created_at
+                FROM invoices
+                WHERE id=%s
+                LIMIT 1
+                """,
+                (invoice_id,),
+            )
+            current = cur.fetchone()
+            if not current:
+                raise KeyError("invoice not found")
+            current_invoice = InvoiceRecord(*current)
+            cur.execute("UPDATE invoices SET status=%s WHERE id=%s", (to_status, invoice_id))
+            cur.execute(
+                """
+                INSERT INTO invoice_status_transitions(id, invoice_id, from_status, to_status, changed_by, changed_at)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                """,
+                (str(uuid4()), invoice_id, current_invoice.status, to_status, actor_id, datetime.now(UTC)),
+            )
+            conn.commit()
+        return InvoiceRecord(
+            current_invoice.id,
+            current_invoice.project_id,
+            current_invoice.period_start,
+            current_invoice.period_end,
+            to_status,
+            current_invoice.total_cents,
+            current_invoice.created_at,
+        )

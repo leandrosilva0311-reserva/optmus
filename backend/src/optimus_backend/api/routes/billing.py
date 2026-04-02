@@ -7,6 +7,7 @@ from optimus_backend.api.dependencies import (
     get_billing_cycle_closer,
     get_billing_command_model,
     get_billing_read_model,
+    get_billing_scheduler,
     get_current_user,
     get_usage_meter,
 )
@@ -17,8 +18,14 @@ from optimus_backend.schemas.billing import (
     BillingCycleHistoryItemResponse,
     BillingCycleHistoryResponse,
     BillingCycleRunDueResponse,
+    BillingCycleSchedulerConfigResponse,
+    BillingSchedulerRunResponse,
     BillingInvoiceDetailResponse,
+    BillingInvoiceHistoryEntryResponse,
+    BillingInvoiceHistoryResponse,
     BillingInvoiceItemResponse,
+    BillingInvoiceStatusChangeRequest,
+    BillingInvoiceStatusTransitionResponse,
     BillingInvoiceResponse,
     BillingPlanChangeRequest,
     BillingPlanChangeHistoryResponse,
@@ -313,6 +320,67 @@ def list_invoices(
     ]
 
 
+@router.get("/invoices/history", response_model=BillingInvoiceHistoryResponse)
+def invoice_history(
+    project_id: str = Query(...),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingInvoiceHistoryResponse:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    invoices = get_billing_read_model().list_invoices(project_id)
+    items = []
+    for invoice in invoices[offset : offset + limit]:
+        transitions = get_billing_read_model().list_invoice_status_transitions(invoice.id)
+        entries = [
+            BillingInvoiceStatusTransitionResponse(
+                id=t.id,
+                invoice_id=t.invoice_id,
+                from_status=t.from_status,
+                to_status=t.to_status,
+                changed_by=t.changed_by,
+                changed_at=t.changed_at,
+            )
+            for t in transitions
+        ]
+        items.append(
+            BillingInvoiceHistoryEntryResponse(
+                id=invoice.id,
+                project_id=invoice.project_id,
+                period_start=invoice.period_start,
+                period_end=invoice.period_end,
+                status=invoice.status,
+                total_cents=invoice.total_cents,
+                created_at=invoice.created_at,
+                item_count=len(get_billing_read_model().list_invoice_items(invoice.id)),
+                transitions=entries,
+            )
+        )
+    return BillingInvoiceHistoryResponse(project_id=project_id, items=items)
+
+
+@router.post("/invoices/status", response_model=BillingInvoiceResponse)
+def change_invoice_status(
+    payload: BillingInvoiceStatusChangeRequest,
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingInvoiceResponse:
+    ensure_role(user, {"admin", "operator"})
+    try:
+        invoice = get_billing_command_model().update_invoice_status(payload.invoice_id, payload.to_status, actor_id=user["user_id"])
+    except KeyError as exc:
+        _raise_billing_error(404, "billing_not_found", str(exc))
+    _log_billing_event("invoice_status_changed", user, invoice_id=payload.invoice_id, to_status=payload.to_status)
+    return BillingInvoiceResponse(
+        id=invoice.id,
+        project_id=invoice.project_id,
+        period_start=invoice.period_start,
+        period_end=invoice.period_end,
+        status=invoice.status,
+        total_cents=invoice.total_cents,
+        created_at=invoice.created_at,
+    )
+
+
 @router.get("/invoices/detail", response_model=BillingInvoiceDetailResponse)
 def invoice_detail(
     project_id: str = Query(...),
@@ -449,4 +517,59 @@ def run_due_cycle_closure(
             )
             for invoice in report.invoices
         ],
+    )
+
+
+@router.get("/cycle/scheduler/config", response_model=BillingCycleSchedulerConfigResponse)
+def billing_scheduler_config(user: dict[str, str] = Depends(get_current_user)) -> BillingCycleSchedulerConfigResponse:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    return BillingCycleSchedulerConfigResponse(
+        cron_expression="0 * * * *",
+        retry_delays_seconds=[1, 3, 10],
+        lock_window_scope="daily-window-key",
+    )
+
+
+@router.post("/cycle/run-due/scheduler", response_model=BillingSchedulerRunResponse)
+def run_due_cycle_scheduler(
+    payload: BillingCycleRunDueRequest,
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingSchedulerRunResponse:
+    ensure_role(user, {"admin", "operator"})
+    result = get_billing_scheduler().run_with_retry(payload.as_of, actor_id=user["user_id"])
+    if result.report is None:
+        return BillingSchedulerRunResponse(
+            success=result.success,
+            attempts=result.attempts,
+            alert_required=result.alert_required,
+            error=result.error,
+            report=None,
+        )
+    report = result.report
+    return BillingSchedulerRunResponse(
+        success=result.success,
+        attempts=result.attempts,
+        alert_required=result.alert_required,
+        error=result.error,
+        report=BillingCycleRunDueResponse(
+            started_at=report.started_at,
+            finished_at=report.finished_at,
+            processed_subscriptions=report.processed_subscriptions,
+            generated_invoices=report.generated_invoices,
+            failed_subscriptions=report.failed_subscriptions,
+            duration_ms=report.duration_ms,
+            failures=report.failures,
+            invoices=[
+                BillingInvoiceResponse(
+                    id=invoice.id,
+                    project_id=invoice.project_id,
+                    period_start=invoice.period_start,
+                    period_end=invoice.period_end,
+                    status=invoice.status,
+                    total_cents=invoice.total_cents,
+                    created_at=invoice.created_at,
+                )
+                for invoice in report.invoices
+            ],
+        ),
     )
