@@ -6,15 +6,22 @@ import { DashboardPage } from '../domains/dashboard/page'
 import { LandingPage } from '../domains/landing/page'
 import { LogsPage } from '../domains/logs/page'
 import { WorkspacePage } from '../domains/workspace/page'
+import { BillingPage } from '../domains/billing/page'
 import { TopNav } from '../shared/components/top-nav'
 import {
   AgentCatalogItem,
   AuditEvent,
+  BillingAdminOverview,
+  BillingInvoiceHistoryEntry,
+  BillingUsageHistoryItem,
   Execution,
   ScenarioCatalogItem,
   ScenarioDetail,
   Subtask,
   getAgentCatalog,
+  getBillingAdminOverview,
+  getBillingInvoiceHistory,
+  getBillingUsagePeriod,
   getScenarioDetail,
   getScenarioTimeline,
   getSubtasks,
@@ -48,6 +55,12 @@ export function AppRouter() {
   const [timelineError, setTimelineError] = useState<string | null>(null)
   const [loadingAgents, setLoadingAgents] = useState(false)
   const [agentsError, setAgentsError] = useState<string | null>(null)
+  const [billingOverview, setBillingOverview] = useState<BillingAdminOverview | null>(null)
+  const [billingInvoices, setBillingInvoices] = useState<BillingInvoiceHistoryEntry[]>([])
+  const [billingUsageItems, setBillingUsageItems] = useState<BillingUsageHistoryItem[]>([])
+  const [loadingBilling, setLoadingBilling] = useState(false)
+  const [billingError, setBillingError] = useState<string | null>(null)
+  const billingProjectId = 'default'
 
   useEffect(() => {
     if (!sessionId) return
@@ -81,6 +94,31 @@ export function AppRouter() {
 
     loadBootData()
   }, [sessionId])
+
+  useEffect(() => {
+    if (!sessionId || section !== 'billing') return
+    async function loadBilling() {
+      setLoadingBilling(true)
+      setBillingError(null)
+      try {
+        const now = new Date()
+        const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        const [overview, invoices, usage] = await Promise.all([
+          getBillingAdminOverview(sessionId),
+          getBillingInvoiceHistory(sessionId, billingProjectId),
+          getBillingUsagePeriod(sessionId, billingProjectId, start.toISOString(), now.toISOString()),
+        ])
+        setBillingOverview(overview)
+        setBillingInvoices(invoices)
+        setBillingUsageItems(usage.items)
+      } catch {
+        setBillingError('Falha ao carregar dados comerciais de billing.')
+      } finally {
+        setLoadingBilling(false)
+      }
+    }
+    loadBilling()
+  }, [sessionId, section])
 
   async function handleLogin(email: string, password: string) {
     const data = await login(email, password)
@@ -228,6 +266,16 @@ export function AppRouter() {
           />
         )}
         {section === 'agents' && <AgentsPage agents={agents} isLoading={loadingAgents} errorMessage={agentsError} />}
+        {section === 'billing' && (
+          <BillingPage
+            projectId={billingProjectId}
+            overview={billingOverview}
+            invoices={billingInvoices}
+            usageItems={billingUsageItems}
+            isLoading={loadingBilling}
+            errorMessage={billingError}
+          />
+        )}
       </main>
     </div>
   )

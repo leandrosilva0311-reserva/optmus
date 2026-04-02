@@ -96,6 +96,57 @@ export type RunScenarioResponse = {
   usage: UsageSnapshot
 }
 
+export type BillingInvoice = {
+  id: string
+  project_id: string
+  period_start: string
+  period_end: string
+  status: string
+  total_cents: number
+  created_at: string
+}
+
+export type BillingInvoiceTransition = {
+  id: string
+  invoice_id: string
+  from_status: string
+  to_status: string
+  changed_by: string
+  changed_at: string
+}
+
+export type BillingInvoiceHistoryEntry = BillingInvoice & {
+  item_count: number
+  transitions: BillingInvoiceTransition[]
+}
+
+export type BillingUsageHistoryItem = { event_date: string; units: number }
+
+export type BillingUsageHistoryResponse = {
+  project_id: string
+  items: BillingUsageHistoryItem[]
+}
+
+export type BillingSchedulerRunHistoryItem = {
+  id: string
+  started_at: string
+  finished_at: string
+  success: boolean
+  attempts: number
+  alert_required: boolean
+  processed_subscriptions: number
+  generated_invoices: number
+  failed_subscriptions: number
+  duration_ms: number
+  error: string | null
+  warnings: string[]
+}
+
+export type BillingAdminOverview = {
+  latest_scheduler_run: BillingSchedulerRunHistoryItem | null
+  recent_alerts: BillingSchedulerRunHistoryItem[]
+}
+
 export async function login(email: string, password: string): Promise<LoginResponse> {
   const response = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
@@ -182,5 +233,48 @@ export async function getScenarioTimeline(sessionId: string, executionId: string
     headers: { 'X-Session-Id': sessionId },
   })
   if (!response.ok) throw new Error('Failed to load scenario timeline')
+  return response.json()
+}
+
+export async function listBillingInvoices(sessionId: string, projectId: string): Promise<BillingInvoice[]> {
+  const response = await fetch(`${API_BASE}/billing/invoices?project_id=${encodeURIComponent(projectId)}`, {
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Failed to load billing invoices')
+  return response.json()
+}
+
+export async function getBillingInvoiceHistory(sessionId: string, projectId: string): Promise<BillingInvoiceHistoryEntry[]> {
+  const response = await fetch(`${API_BASE}/billing/invoices/history?project_id=${encodeURIComponent(projectId)}`, {
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Failed to load invoice history')
+  const payload = await response.json()
+  return payload.items
+}
+
+export async function getBillingUsagePeriod(
+  sessionId: string,
+  projectId: string,
+  periodStart: string,
+  periodEnd: string
+): Promise<BillingUsageHistoryResponse> {
+  const query = new URLSearchParams({
+    project_id: projectId,
+    period_start: periodStart,
+    period_end: periodEnd,
+  })
+  const response = await fetch(`${API_BASE}/billing/usage/period?${query.toString()}`, {
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Failed to load usage period')
+  return response.json()
+}
+
+export async function getBillingAdminOverview(sessionId: string): Promise<BillingAdminOverview> {
+  const response = await fetch(`${API_BASE}/billing/admin/overview`, {
+    headers: { 'X-Session-Id': sessionId },
+  })
+  if (!response.ok) throw new Error('Failed to load billing admin overview')
   return response.json()
 }
