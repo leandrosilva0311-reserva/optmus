@@ -42,7 +42,7 @@ def _log_billing_event(event_type: str, user: dict[str, str], **extra: str) -> N
 
 def ensure_role(user: dict[str, str], allowed: set[str]) -> None:
     if user["role"] not in allowed:
-        raise HTTPException(status_code=403, detail="insufficient role")
+        _raise_billing_error(403, "billing_forbidden", "insufficient role")
 
 
 @router.get("/plans", response_model=list[BillingPlanResponse])
@@ -67,7 +67,12 @@ def create_or_activate_subscription(
     user: dict[str, str] = Depends(get_current_user),
 ) -> BillingSubscriptionResponse:
     ensure_role(user, {"admin", "operator"})
-    sub = get_billing_command_model().create_or_activate_subscription(payload.project_id, payload.plan_id, actor_id=user["user_id"])
+    try:
+        sub = get_billing_command_model().create_or_activate_subscription(payload.project_id, payload.plan_id, actor_id=user["user_id"])
+    except KeyError as exc:
+        _raise_billing_error(404, "billing_not_found", str(exc))
+    except ValueError as exc:
+        _raise_billing_error(400, "billing_validation_error", str(exc))
     _log_billing_event("subscription_activated", user, project_id=payload.project_id, plan_id=payload.plan_id)
     return BillingSubscriptionResponse(
         id=sub.id,
@@ -211,7 +216,10 @@ def list_invoices(
     user: dict[str, str] = Depends(get_current_user),
 ) -> list[BillingInvoiceResponse]:
     ensure_role(user, {"admin", "operator", "viewer"})
-    invoices = get_billing_read_model().list_invoices(project_id)
+    try:
+        invoices = get_billing_read_model().list_invoices(project_id)
+    except KeyError as exc:
+        _raise_billing_error(404, "billing_not_found", str(exc))
     return [
         BillingInvoiceResponse(
             id=inv.id,
@@ -234,7 +242,10 @@ def invoice_detail(
 ) -> BillingInvoiceDetailResponse:
     ensure_role(user, {"admin", "operator", "viewer"})
     models = get_billing_read_model()
-    invoice = next((inv for inv in models.list_invoices(project_id=project_id) if inv.id == invoice_id), None)
+    try:
+        invoice = next((inv for inv in models.list_invoices(project_id=project_id) if inv.id == invoice_id), None)
+    except KeyError as exc:
+        _raise_billing_error(404, "billing_not_found", str(exc))
     if invoice is None:
         _raise_billing_error(404, "billing_not_found", "invoice not found")
     return BillingInvoiceDetailResponse(

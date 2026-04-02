@@ -26,6 +26,13 @@ class PostgresBillingStore:
             raise RuntimeError("psycopg not installed")
         return psycopg.connect(self._dsn)
 
+    def _is_unique_violation(self, exc: Exception) -> bool:
+        if psycopg is None:
+            return False
+        errors = getattr(psycopg, "errors", None)
+        unique_violation = getattr(errors, "UniqueViolation", None) if errors else None
+        return bool(unique_violation and isinstance(exc, unique_violation))
+
     def list_active_plans(self) -> list[PlanDefinitionRecord]:
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute(
@@ -247,7 +254,9 @@ class PostgresBillingStore:
                     (str(uuid4()), project_id, period_start.date(), period_end.date(), invoice.id, usage_units, actor_id, datetime.now(UTC)),
                 )
                 conn.commit()
-        except Exception:
+        except Exception as exc:
+            if not self._is_unique_violation(exc):
+                raise
             with self._conn() as conn, conn.cursor() as cur:
                 cur.execute(
                     """
