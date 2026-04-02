@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from optimus_backend.api.dependencies import (
+    get_billing_cycle_closer,
     get_billing_command_model,
     get_billing_read_model,
     get_current_user,
@@ -12,6 +13,7 @@ from optimus_backend.api.dependencies import (
 from optimus_backend.core.usage.metering import warning_for_ratio
 from optimus_backend.schemas.billing import (
     BillingCycleCloseRequest,
+    BillingCycleRunDueRequest,
     BillingCycleHistoryItemResponse,
     BillingCycleHistoryResponse,
     BillingInvoiceDetailResponse,
@@ -21,6 +23,7 @@ from optimus_backend.schemas.billing import (
     BillingPlanChangeHistoryResponse,
     BillingPlanChangeResponse,
     BillingPlanResponse,
+    BillingSubscriptionActivateRequest,
     BillingSubscriptionCreateRequest,
     BillingSubscriptionResponse,
     BillingUsageCurrentResponse,
@@ -74,6 +77,52 @@ def create_or_activate_subscription(
     except ValueError as exc:
         _raise_billing_error(400, "billing_validation_error", str(exc))
     _log_billing_event("subscription_activated", user, project_id=payload.project_id, plan_id=payload.plan_id)
+    return BillingSubscriptionResponse(
+        id=sub.id,
+        project_id=sub.project_id,
+        plan_id=sub.plan_id,
+        status=sub.status,
+        started_at=sub.started_at,
+        renews_at=sub.renews_at,
+    )
+
+
+@router.post("/subscription/create", response_model=BillingSubscriptionResponse)
+def create_subscription(
+    payload: BillingSubscriptionCreateRequest,
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingSubscriptionResponse:
+    ensure_role(user, {"admin", "operator"})
+    try:
+        sub = get_billing_command_model().create_subscription(payload.project_id, payload.plan_id, actor_id=user["user_id"])
+    except KeyError as exc:
+        _raise_billing_error(404, "billing_not_found", str(exc))
+    except ValueError as exc:
+        _raise_billing_error(400, "billing_validation_error", str(exc))
+    _log_billing_event("subscription_created", user, project_id=payload.project_id, plan_id=payload.plan_id)
+    return BillingSubscriptionResponse(
+        id=sub.id,
+        project_id=sub.project_id,
+        plan_id=sub.plan_id,
+        status=sub.status,
+        started_at=sub.started_at,
+        renews_at=sub.renews_at,
+    )
+
+
+@router.post("/subscription/activate", response_model=BillingSubscriptionResponse)
+def activate_subscription(
+    payload: BillingSubscriptionActivateRequest,
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingSubscriptionResponse:
+    ensure_role(user, {"admin", "operator"})
+    try:
+        sub = get_billing_command_model().activate_subscription(payload.project_id, actor_id=user["user_id"])
+    except KeyError as exc:
+        _raise_billing_error(404, "billing_not_found", str(exc))
+    except ValueError as exc:
+        _raise_billing_error(400, "billing_validation_error", str(exc))
+    _log_billing_event("subscription_activated_manual", user, project_id=payload.project_id)
     return BillingSubscriptionResponse(
         id=sub.id,
         project_id=sub.project_id,
@@ -181,6 +230,23 @@ def usage_history(
     )
 
 
+@router.get("/usage/period", response_model=BillingUsageHistoryResponse)
+def usage_history_period(
+    project_id: str = Query(...),
+    period_start: datetime = Query(...),
+    period_end: datetime = Query(...),
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingUsageHistoryResponse:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    if period_start >= period_end:
+        _raise_billing_error(400, "billing_validation_error", "period_start must be before period_end")
+    history = get_billing_read_model().usage_history(project_id, period_start, period_end)
+    return BillingUsageHistoryResponse(
+        project_id=project_id,
+        items=[{"event_date": i.event_date.isoformat(), "units": i.units} for i in history],
+    )
+
+
 @router.post("/cycle/close", response_model=BillingInvoiceResponse)
 def close_cycle(
     payload: BillingCycleCloseRequest,
@@ -213,6 +279,11 @@ def close_cycle(
 @router.get("/invoices", response_model=list[BillingInvoiceResponse])
 def list_invoices(
     project_id: str = Query(...),
+    period_start: datetime | None = Query(default=None),
+    period_end: datetime | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     user: dict[str, str] = Depends(get_current_user),
 ) -> list[BillingInvoiceResponse]:
     ensure_role(user, {"admin", "operator", "viewer"})
@@ -220,6 +291,13 @@ def list_invoices(
         invoices = get_billing_read_model().list_invoices(project_id)
     except KeyError as exc:
         _raise_billing_error(404, "billing_not_found", str(exc))
+    filtered = [
+        inv
+        for inv in invoices
+        if (period_start is None or inv.period_start >= period_start)
+        and (period_end is None or inv.period_end <= period_end)
+        and (status is None or inv.status == status)
+    ]
     return [
         BillingInvoiceResponse(
             id=inv.id,
@@ -230,7 +308,7 @@ def list_invoices(
             total_cents=inv.total_cents,
             created_at=inv.created_at,
         )
-        for inv in invoices
+        for inv in filtered[offset : offset + limit]
     ]
 
 
@@ -315,3 +393,25 @@ def cycle_history(
             for item in items
         ],
     )
+
+
+@router.post("/cycle/run-due", response_model=list[BillingInvoiceResponse])
+def run_due_cycle_closure(
+    payload: BillingCycleRunDueRequest,
+    user: dict[str, str] = Depends(get_current_user),
+) -> list[BillingInvoiceResponse]:
+    ensure_role(user, {"admin", "operator"})
+    invoices = get_billing_cycle_closer().run_due_cycles(payload.as_of, actor_id=user["user_id"])
+    _log_billing_event("billing_cycle_due_job_run", user, as_of=payload.as_of.isoformat(), closed_count=str(len(invoices)))
+    return [
+        BillingInvoiceResponse(
+            id=invoice.id,
+            project_id=invoice.project_id,
+            period_start=invoice.period_start,
+            period_end=invoice.period_end,
+            status=invoice.status,
+            total_cents=invoice.total_cents,
+            created_at=invoice.created_at,
+        )
+        for invoice in invoices
+    ]

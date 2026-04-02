@@ -65,20 +65,42 @@ class InMemoryBillingStore:
     def list_cycle_closures(self, project_id: str) -> list[BillingCycleClosureRecord]:
         return [closure for closure in self._closures if closure.project_id == project_id]
 
-    def create_or_activate_subscription(self, project_id: str, plan_id: str, actor_id: str = "system") -> SubscriptionRecord:
+    def list_active_subscriptions_due(self, as_of: datetime) -> list[SubscriptionRecord]:
+        return [
+            sub
+            for sub in self._subscriptions.values()
+            if sub.status in {"active", "cancelling"} and sub.renews_at is not None and sub.renews_at <= as_of
+        ]
+
+    def create_subscription(self, project_id: str, plan_id: str, actor_id: str = "system") -> SubscriptionRecord:
         _ = actor_id
-        now = datetime.now(UTC)
         sub = SubscriptionRecord(
             id=str(uuid4()),
             project_id=project_id,
             plan_id=plan_id,
-            status="active",
-            started_at=now,
-            renews_at=now + timedelta(days=30),
+            status="pending_activation",
+            started_at=datetime.now(UTC),
+            renews_at=None,
             cancelled_at=None,
         )
         self._subscriptions[project_id] = sub
         return sub
+
+    def activate_subscription(self, project_id: str, actor_id: str = "system") -> SubscriptionRecord:
+        _ = actor_id
+        sub = self._subscriptions.get(project_id)
+        if sub is None:
+            raise KeyError("subscription not found")
+        if sub.status not in {"pending_activation", "active", "cancelling"}:
+            raise ValueError("subscription cannot be activated")
+        now = datetime.now(UTC)
+        activated = replace(sub, status="active", started_at=now, renews_at=now + timedelta(days=30))
+        self._subscriptions[project_id] = activated
+        return activated
+
+    def create_or_activate_subscription(self, project_id: str, plan_id: str, actor_id: str = "system") -> SubscriptionRecord:
+        self.create_subscription(project_id, plan_id, actor_id=actor_id)
+        return self.activate_subscription(project_id, actor_id=actor_id)
 
     def change_plan(self, project_id: str, new_plan_id: str) -> SubscriptionPlanChangeRecord:
         sub = self.get_active_subscription(project_id)
@@ -116,7 +138,14 @@ class InMemoryBillingStore:
         self._subscriptions[project_id] = updated
         return updated
 
-    def close_billing_cycle(self, project_id: str, period_start: datetime, period_end: datetime) -> InvoiceRecord:
+    def close_billing_cycle(
+        self,
+        project_id: str,
+        period_start: datetime,
+        period_end: datetime,
+        actor_id: str = "system",
+    ) -> InvoiceRecord:
+        _ = actor_id
         if period_start >= period_end:
             raise ValueError("period_start must be before period_end")
         sub = self.get_active_subscription(project_id)

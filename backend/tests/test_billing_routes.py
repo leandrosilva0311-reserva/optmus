@@ -46,3 +46,21 @@ def test_billing_not_found_error_is_standardized() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "billing_not_found"
+
+
+def test_subscription_create_and_activate_routes() -> None:
+    store = InMemoryBillingStore()
+    app.dependency_overrides[dependencies.get_current_user] = _override_admin_user
+    app.dependency_overrides[dependencies.get_billing_read_model] = lambda: store
+    app.dependency_overrides[dependencies.get_billing_command_model] = lambda: store
+    app.dependency_overrides[dependencies.get_usage_meter] = InMemoryUsageMeter
+
+    with TestClient(app) as client:
+        created = client.post("/billing/subscription/create", json={"project_id": "p-admin", "plan_id": "starter"})
+        activated = client.post("/billing/subscription/activate", json={"project_id": "p-admin"})
+    app.dependency_overrides.clear()
+
+    assert created.status_code == 200
+    assert created.json()["status"] == "pending_activation"
+    assert activated.status_code == 200
+    assert activated.json()["status"] == "active"

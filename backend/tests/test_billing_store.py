@@ -70,3 +70,13 @@ def test_usage_price_uses_plan_configuration() -> None:
     plan = store.get_plan("growth")
     assert plan is not None
     assert invoice.total_cents == plan.monthly_price_cents + (5 * plan.usage_unit_price_cents)
+
+
+def test_subscription_create_then_activate() -> None:
+    store = InMemoryBillingStore()
+    created = store.create_subscription("p-ops", "starter")
+    assert created.status == "pending_activation"
+
+    activated = store.activate_subscription("p-ops")
+    assert activated.status == "active"
+    assert activated.renews_at is not None

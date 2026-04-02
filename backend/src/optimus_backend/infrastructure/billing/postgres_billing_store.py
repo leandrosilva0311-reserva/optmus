@@ -119,18 +119,61 @@ class PostgresBillingStore:
             rows = cur.fetchall()
         return [BillingCycleClosureRecord(*row) for row in rows]
 
-    def create_or_activate_subscription(self, project_id: str, plan_id: str, actor_id: str = "system") -> SubscriptionRecord:
+    def list_active_subscriptions_due(self, as_of: datetime) -> list[SubscriptionRecord]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, project_id, plan_id, status, started_at, renews_at, cancelled_at
+                FROM subscriptions
+                WHERE status IN ('active', 'cancelling') AND renews_at IS NOT NULL AND renews_at <= %s
+                ORDER BY renews_at ASC
+                """,
+                (as_of,),
+            )
+            rows = cur.fetchall()
+        return [SubscriptionRecord(*row) for row in rows]
+
+    def create_subscription(self, project_id: str, plan_id: str, actor_id: str = "system") -> SubscriptionRecord:
         _ = actor_id
         now = datetime.now(UTC)
-        sub = SubscriptionRecord(str(uuid4()), project_id, plan_id, "active", now, now + timedelta(days=30), None)
+        sub = SubscriptionRecord(str(uuid4()), project_id, plan_id, "pending_activation", now, None, None)
         with self._conn() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE subscriptions SET status='cancelled' WHERE project_id=%s AND status IN ('active','cancelling')", (project_id,))
+            cur.execute("UPDATE subscriptions SET status='cancelled' WHERE project_id=%s AND status IN ('active','cancelling','pending_activation')", (project_id,))
             cur.execute(
                 "INSERT INTO subscriptions(id, project_id, plan_id, status, started_at, renews_at, cancelled_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
                 (sub.id, sub.project_id, sub.plan_id, sub.status, sub.started_at, sub.renews_at, sub.cancelled_at),
             )
             conn.commit()
         return sub
+
+    def activate_subscription(self, project_id: str, actor_id: str = "system") -> SubscriptionRecord:
+        _ = actor_id
+        now = datetime.now(UTC)
+        renews_at = now + timedelta(days=30)
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE subscriptions
+                SET status='active', started_at=%s, renews_at=%s
+                WHERE id = (
+                  SELECT id FROM subscriptions
+                  WHERE project_id=%s AND status IN ('pending_activation', 'active', 'cancelling')
+                  ORDER BY created_at DESC
+                  LIMIT 1
+                )
+                RETURNING id, project_id, plan_id, status, started_at, renews_at, cancelled_at
+                """,
+                (now, renews_at, project_id),
+            )
+            row = cur.fetchone()
+            conn.commit()
+        if row is None:
+            raise KeyError("subscription not found")
+        return SubscriptionRecord(*row)
+
+    def create_or_activate_subscription(self, project_id: str, plan_id: str, actor_id: str = "system") -> SubscriptionRecord:
+        self.create_subscription(project_id, plan_id, actor_id=actor_id)
+        return self.activate_subscription(project_id, actor_id=actor_id)
 
     def change_plan(self, project_id: str, new_plan_id: str) -> SubscriptionPlanChangeRecord:
         sub = self.get_active_subscription(project_id)

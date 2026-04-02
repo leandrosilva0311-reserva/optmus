@@ -16,6 +16,10 @@ class BillingSubscriptionCreateRequest(BaseModel):
     plan_id: str
 
 
+class BillingSubscriptionActivateRequest(BaseModel):
+    project_id: str
+
+
 class BillingPlanChangeRequest(BaseModel):
     project_id: str
     new_plan_id: str
@@ -67,6 +71,10 @@ class BillingCycleCloseRequest(BaseModel):
     project_id: str
     period_start: datetime
     period_end: datetime
+
+
+class BillingCycleRunDueRequest(BaseModel):
+    as_of: datetime
 
 
 class BillingInvoiceResponse(BaseModel):

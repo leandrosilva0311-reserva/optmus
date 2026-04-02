@@ -3,6 +3,7 @@ from functools import lru_cache
 
 from fastapi import Header, HTTPException
 
+from optimus_backend.application.jobs.billing_cycle_closer import BillingCycleCloser
 from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase, LogoutUseCase
 from optimus_backend.application.use_cases.list_executions import ListExecutionsUseCase
 from optimus_backend.application.use_cases.start_execution import FinalizeExecutionUseCase, StartExecutionUseCase
@@ -117,6 +118,11 @@ def get_billing_read_model() -> object:
 @lru_cache(maxsize=1)
 def get_billing_command_model() -> object:
     return get_billing_store()
+
+
+@lru_cache(maxsize=1)
+def get_billing_cycle_closer() -> BillingCycleCloser:
+    return BillingCycleCloser(read_model=get_billing_read_model(), command_model=get_billing_command_model())
 
 
 @lru_cache(maxsize=1)
