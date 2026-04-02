@@ -158,3 +158,19 @@ class InvoiceStatusTransitionRecord:
     to_status: str
     changed_by: str
     changed_at: datetime
+
+
+@dataclass(slots=True)
+class BillingSchedulerRunRecord:
+    id: str
+    started_at: datetime
+    finished_at: datetime
+    success: bool
+    attempts: int
+    alert_required: bool
+    processed_subscriptions: int
+    generated_invoices: int
+    failed_subscriptions: int
+    duration_ms: int
+    error: str | None
+    warnings: list[str] = field(default_factory=list)

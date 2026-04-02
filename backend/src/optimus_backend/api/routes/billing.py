@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -12,7 +13,9 @@ from optimus_backend.api.dependencies import (
     get_usage_meter,
 )
 from optimus_backend.core.usage.metering import warning_for_ratio
+from optimus_backend.domain.entities import BillingSchedulerRunRecord
 from optimus_backend.schemas.billing import (
+    BillingAdminOverviewResponse,
     BillingCycleCloseRequest,
     BillingCycleRunDueRequest,
     BillingCycleHistoryItemResponse,
@@ -20,6 +23,8 @@ from optimus_backend.schemas.billing import (
     BillingCycleRunDueResponse,
     BillingCycleSchedulerConfigResponse,
     BillingSchedulerRunResponse,
+    BillingSchedulerRunHistoryItemResponse,
+    BillingSchedulerRunHistoryResponse,
     BillingInvoiceDetailResponse,
     BillingInvoiceHistoryEntryResponse,
     BillingInvoiceHistoryResponse,
@@ -537,12 +542,29 @@ def run_due_cycle_scheduler(
 ) -> BillingSchedulerRunResponse:
     ensure_role(user, {"admin", "operator"})
     result = get_billing_scheduler().run_with_retry(payload.as_of, actor_id=user["user_id"])
+    run_record = BillingSchedulerRunRecord(
+        id=str(uuid4()),
+        started_at=result.report.started_at if result.report else payload.as_of,
+        finished_at=result.report.finished_at if result.report else datetime.now(UTC),
+        success=result.success,
+        attempts=result.attempts,
+        alert_required=result.alert_required,
+        processed_subscriptions=result.report.processed_subscriptions if result.report else 0,
+        generated_invoices=result.report.generated_invoices if result.report else 0,
+        failed_subscriptions=result.report.failed_subscriptions if result.report else 0,
+        duration_ms=result.report.duration_ms if result.report else 0,
+        error=result.error,
+        warnings=result.warnings,
+    )
+    get_billing_command_model().record_scheduler_run(run_record)
     if result.report is None:
         return BillingSchedulerRunResponse(
             success=result.success,
             attempts=result.attempts,
             alert_required=result.alert_required,
             error=result.error,
+            warnings=result.warnings,
+            retry_delays_applied=result.retry_delays_applied,
             report=None,
         )
     report = result.report
@@ -551,6 +573,8 @@ def run_due_cycle_scheduler(
         attempts=result.attempts,
         alert_required=result.alert_required,
         error=result.error,
+        warnings=result.warnings,
+        retry_delays_applied=result.retry_delays_applied,
         report=BillingCycleRunDueResponse(
             started_at=report.started_at,
             finished_at=report.finished_at,
@@ -572,4 +596,104 @@ def run_due_cycle_scheduler(
                 for invoice in report.invoices
             ],
         ),
+    )
+
+
+@router.get("/scheduler/runs", response_model=BillingSchedulerRunHistoryResponse)
+def scheduler_run_history(
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingSchedulerRunHistoryResponse:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    runs = get_billing_read_model().list_scheduler_runs(limit=limit, offset=offset)
+    return BillingSchedulerRunHistoryResponse(
+        items=[
+            BillingSchedulerRunHistoryItemResponse(
+                id=run.id,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                success=run.success,
+                attempts=run.attempts,
+                alert_required=run.alert_required,
+                processed_subscriptions=run.processed_subscriptions,
+                generated_invoices=run.generated_invoices,
+                failed_subscriptions=run.failed_subscriptions,
+                duration_ms=run.duration_ms,
+                error=run.error,
+                warnings=run.warnings,
+            )
+            for run in runs
+        ]
+    )
+
+
+@router.get("/scheduler/runs/latest", response_model=BillingSchedulerRunHistoryItemResponse | None)
+def latest_scheduler_run(
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingSchedulerRunHistoryItemResponse | None:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    run = get_billing_read_model().get_latest_scheduler_run()
+    if run is None:
+        return None
+    return BillingSchedulerRunHistoryItemResponse(
+        id=run.id,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        success=run.success,
+        attempts=run.attempts,
+        alert_required=run.alert_required,
+        processed_subscriptions=run.processed_subscriptions,
+        generated_invoices=run.generated_invoices,
+        failed_subscriptions=run.failed_subscriptions,
+        duration_ms=run.duration_ms,
+        error=run.error,
+        warnings=run.warnings,
+    )
+
+
+@router.get("/admin/overview", response_model=BillingAdminOverviewResponse)
+def admin_overview(
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingAdminOverviewResponse:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    latest = get_billing_read_model().get_latest_scheduler_run()
+    alerts = get_billing_read_model().list_scheduler_alerts(limit=10)
+    latest_view = (
+        BillingSchedulerRunHistoryItemResponse(
+            id=latest.id,
+            started_at=latest.started_at,
+            finished_at=latest.finished_at,
+            success=latest.success,
+            attempts=latest.attempts,
+            alert_required=latest.alert_required,
+            processed_subscriptions=latest.processed_subscriptions,
+            generated_invoices=latest.generated_invoices,
+            failed_subscriptions=latest.failed_subscriptions,
+            duration_ms=latest.duration_ms,
+            error=latest.error,
+            warnings=latest.warnings,
+        )
+        if latest
+        else None
+    )
+    return BillingAdminOverviewResponse(
+        latest_scheduler_run=latest_view,
+        recent_alerts=[
+            BillingSchedulerRunHistoryItemResponse(
+                id=run.id,
+                started_at=run.started_at,
+                finished_at=run.finished_at,
+                success=run.success,
+                attempts=run.attempts,
+                alert_required=run.alert_required,
+                processed_subscriptions=run.processed_subscriptions,
+                generated_invoices=run.generated_invoices,
+                failed_subscriptions=run.failed_subscriptions,
+                duration_ms=run.duration_ms,
+                error=run.error,
+                warnings=run.warnings,
+            )
+            for run in alerts
+        ],
     )

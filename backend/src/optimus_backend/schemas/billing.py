@@ -161,4 +161,30 @@ class BillingSchedulerRunResponse(BaseModel):
     attempts: int
     alert_required: bool
     error: str | None
+    warnings: list[str]
+    retry_delays_applied: list[int]
     report: BillingCycleRunDueResponse | None
+
+
+class BillingSchedulerRunHistoryItemResponse(BaseModel):
+    id: str
+    started_at: datetime
+    finished_at: datetime
+    success: bool
+    attempts: int
+    alert_required: bool
+    processed_subscriptions: int
+    generated_invoices: int
+    failed_subscriptions: int
+    duration_ms: int
+    error: str | None
+    warnings: list[str]
+
+
+class BillingSchedulerRunHistoryResponse(BaseModel):
+    items: list[BillingSchedulerRunHistoryItemResponse]
+
+
+class BillingAdminOverviewResponse(BaseModel):
+    latest_scheduler_run: BillingSchedulerRunHistoryItemResponse | None
+    recent_alerts: list[BillingSchedulerRunHistoryItemResponse]

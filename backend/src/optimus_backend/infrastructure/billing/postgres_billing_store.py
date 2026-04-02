@@ -1,8 +1,10 @@
 from datetime import UTC, datetime, timedelta
+import json
 from uuid import uuid4
 
 from optimus_backend.domain.entities import (
     BillingCycleClosureRecord,
+    BillingSchedulerRunRecord,
     InvoiceRecord,
     InvoiceStatusTransitionRecord,
     InvoiceItemRecord,
@@ -96,6 +98,73 @@ class PostgresBillingStore:
             )
             rows = cur.fetchall()
         return [InvoiceStatusTransitionRecord(*row) for row in rows]
+
+    def list_scheduler_runs(self, limit: int = 20, offset: int = 0) -> list[BillingSchedulerRunRecord]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, started_at, finished_at, success, attempts, alert_required,
+                       processed_subscriptions, generated_invoices, failed_subscriptions, duration_ms, error, warnings_json
+                FROM billing_scheduler_runs
+                ORDER BY started_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            )
+            rows = cur.fetchall()
+        return [
+            BillingSchedulerRunRecord(
+                id=row[0],
+                started_at=row[1],
+                finished_at=row[2],
+                success=bool(row[3]),
+                attempts=int(row[4]),
+                alert_required=bool(row[5]),
+                processed_subscriptions=int(row[6]),
+                generated_invoices=int(row[7]),
+                failed_subscriptions=int(row[8]),
+                duration_ms=int(row[9]),
+                error=row[10],
+                warnings=json.loads(row[11] or "[]"),
+            )
+            for row in rows
+        ]
+
+    def get_latest_scheduler_run(self) -> BillingSchedulerRunRecord | None:
+        runs = self.list_scheduler_runs(limit=1, offset=0)
+        return runs[0] if runs else None
+
+    def list_scheduler_alerts(self, limit: int = 20) -> list[BillingSchedulerRunRecord]:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, started_at, finished_at, success, attempts, alert_required,
+                       processed_subscriptions, generated_invoices, failed_subscriptions, duration_ms, error, warnings_json
+                FROM billing_scheduler_runs
+                WHERE alert_required=TRUE
+                ORDER BY started_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        return [
+            BillingSchedulerRunRecord(
+                id=row[0],
+                started_at=row[1],
+                finished_at=row[2],
+                success=bool(row[3]),
+                attempts=int(row[4]),
+                alert_required=bool(row[5]),
+                processed_subscriptions=int(row[6]),
+                generated_invoices=int(row[7]),
+                failed_subscriptions=int(row[8]),
+                duration_ms=int(row[9]),
+                error=row[10],
+                warnings=json.loads(row[11] or "[]"),
+            )
+            for row in rows
+        ]
 
     def usage_history(self, project_id: str, date_from: datetime, date_to: datetime) -> list[UsageHistoryRecord]:
         with self._conn() as conn, conn.cursor() as cur:
@@ -371,3 +440,30 @@ class PostgresBillingStore:
             current_invoice.total_cents,
             current_invoice.created_at,
         )
+
+    def record_scheduler_run(self, run: BillingSchedulerRunRecord) -> None:
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO billing_scheduler_runs(
+                  id, started_at, finished_at, success, attempts, alert_required,
+                  processed_subscriptions, generated_invoices, failed_subscriptions,
+                  duration_ms, error, warnings_json
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    run.id,
+                    run.started_at,
+                    run.finished_at,
+                    run.success,
+                    run.attempts,
+                    run.alert_required,
+                    run.processed_subscriptions,
+                    run.generated_invoices,
+                    run.failed_subscriptions,
+                    run.duration_ms,
+                    run.error,
+                    json.dumps(run.warnings),
+                ),
+            )
+            conn.commit()

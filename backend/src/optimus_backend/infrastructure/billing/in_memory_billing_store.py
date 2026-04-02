@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from optimus_backend.domain.entities import (
+    BillingSchedulerRunRecord,
     BillingCycleClosureRecord,
     InvoiceRecord,
     InvoiceStatusTransitionRecord,
@@ -38,6 +39,7 @@ class InMemoryBillingStore:
         self._invoice_transitions: list[InvoiceStatusTransitionRecord] = []
         self._invoice_items: list[InvoiceItemRecord] = []
         self._closures: list[BillingCycleClosureRecord] = []
+        self._scheduler_runs: list[BillingSchedulerRunRecord] = []
         self._usage: list[UsageHistoryRecord] = []
 
     def list_active_plans(self) -> list[PlanDefinitionRecord]:
@@ -60,6 +62,15 @@ class InMemoryBillingStore:
 
     def list_invoice_status_transitions(self, invoice_id: str) -> list[InvoiceStatusTransitionRecord]:
         return [i for i in self._invoice_transitions if i.invoice_id == invoice_id]
+
+    def list_scheduler_runs(self, limit: int = 20, offset: int = 0) -> list[BillingSchedulerRunRecord]:
+        return self._scheduler_runs[offset : offset + limit]
+
+    def get_latest_scheduler_run(self) -> BillingSchedulerRunRecord | None:
+        return self._scheduler_runs[0] if self._scheduler_runs else None
+
+    def list_scheduler_alerts(self, limit: int = 20) -> list[BillingSchedulerRunRecord]:
+        return [run for run in self._scheduler_runs if run.alert_required][:limit]
 
     def usage_history(self, project_id: str, date_from: datetime, date_to: datetime) -> list[UsageHistoryRecord]:
         return [u for u in self._usage if u.event_date and date_from <= u.event_date <= date_to]
@@ -214,3 +225,6 @@ class InMemoryBillingStore:
             )
             return updated
         raise KeyError("invoice not found")
+
+    def record_scheduler_run(self, run: BillingSchedulerRunRecord) -> None:
+        self._scheduler_runs.insert(0, run)
