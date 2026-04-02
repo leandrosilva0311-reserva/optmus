@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from optimus_backend.domain.entities import UsageHistoryRecord
 from optimus_backend.infrastructure.billing.in_memory_billing_store import InMemoryBillingStore
 
 
@@ -55,3 +56,17 @@ def test_cycle_close_is_idempotent_for_same_period() -> None:
     second = store.close_billing_cycle("p-idem", start, end)
     assert first.id == second.id
     assert len(store.list_invoices("p-idem")) == 1
+
+
+def test_usage_price_uses_plan_configuration() -> None:
+    store = InMemoryBillingStore()
+    store.create_or_activate_subscription("p-pricing", "growth")
+    store._usage.append(UsageHistoryRecord(event_date=datetime(2026, 1, 10, tzinfo=UTC), units=5))  # noqa: SLF001
+    invoice = store.close_billing_cycle(
+        "p-pricing",
+        datetime(2026, 1, 1, tzinfo=UTC),
+        datetime(2026, 1, 31, tzinfo=UTC),
+    )
+    plan = store.get_plan("growth")
+    assert plan is not None
+    assert invoice.total_cents == plan.monthly_price_cents + (5 * plan.usage_unit_price_cents)

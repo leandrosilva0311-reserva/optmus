@@ -6,9 +6,9 @@ from optimus_backend.domain.entities import PlanDefinitionRecord, SubscriptionRe
 class InMemoryBillingReadModel:
     def __init__(self) -> None:
         self._plans = [
-            PlanDefinitionRecord("starter", "Starter", 50, 4900, True),
-            PlanDefinitionRecord("growth", "Growth", 250, 19900, True),
-            PlanDefinitionRecord("enterprise", "Enterprise", 2000, 99900, True),
+            PlanDefinitionRecord("starter", "Starter", 50, 4900, 100, True),
+            PlanDefinitionRecord("growth", "Growth", 250, 19900, 80, True),
+            PlanDefinitionRecord("enterprise", "Enterprise", 2000, 99900, 50, True),
         ]
         self._subscriptions: dict[str, SubscriptionRecord] = {
             "default": SubscriptionRecord(

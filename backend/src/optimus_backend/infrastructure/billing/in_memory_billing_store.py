@@ -16,9 +16,9 @@ from optimus_backend.domain.entities import (
 class InMemoryBillingStore:
     def __init__(self) -> None:
         self._plans = {
-            "starter": PlanDefinitionRecord("starter", "Starter", 50, 4900, True),
-            "growth": PlanDefinitionRecord("growth", "Growth", 250, 19900, True),
-            "enterprise": PlanDefinitionRecord("enterprise", "Enterprise", 2000, 99900, True),
+            "starter": PlanDefinitionRecord("starter", "Starter", 50, 4900, 100, True),
+            "growth": PlanDefinitionRecord("growth", "Growth", 250, 19900, 80, True),
+            "enterprise": PlanDefinitionRecord("enterprise", "Enterprise", 2000, 99900, 50, True),
         }
         now = datetime.now(UTC)
         self._subscriptions: dict[str, SubscriptionRecord] = {
@@ -127,7 +127,7 @@ class InMemoryBillingStore:
                 return existing
         plan = self._plans[sub.plan_id]
         usage_units = sum(item.units for item in self._usage if item.event_date and period_start <= item.event_date <= period_end)
-        usage_total_cents = usage_units * 100
+        usage_total_cents = usage_units * plan.usage_unit_price_cents
         subtotal = plan.monthly_price_cents + usage_total_cents
         invoice = InvoiceRecord(
             id=str(uuid4()),
@@ -143,8 +143,16 @@ class InMemoryBillingStore:
             InvoiceItemRecord(str(uuid4()), invoice.id, "subscription_fee", 1, plan.monthly_price_cents, plan.monthly_price_cents, f"Plano {plan.name}")
         )
         if usage_units > 0:
-            self._invoice_items.append(
-                InvoiceItemRecord(str(uuid4()), invoice.id, "usage_fee", usage_units, 100, usage_total_cents, "Consumo de cenários no período")
+                self._invoice_items.append(
+                InvoiceItemRecord(
+                    str(uuid4()),
+                    invoice.id,
+                    "usage_fee",
+                    usage_units,
+                    plan.usage_unit_price_cents,
+                    usage_total_cents,
+                    "Consumo de cenários no período",
+                )
             )
         self._closures.append(
             BillingCycleClosureRecord(str(uuid4()), project_id, period_start, period_end, invoice.id, usage_units, "system", datetime.now(UTC))

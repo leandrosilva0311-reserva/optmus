@@ -15,7 +15,7 @@ class PostgresBillingReadModel:
             raise RuntimeError("psycopg not installed")
         with psycopg.connect(self._dsn) as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT plan_id, name, daily_scenario_limit, monthly_price_cents, active FROM plan_definitions WHERE active=TRUE ORDER BY monthly_price_cents ASC"
+                "SELECT plan_id, name, daily_scenario_limit, monthly_price_cents, usage_unit_price_cents, active FROM plan_definitions WHERE active=TRUE ORDER BY monthly_price_cents ASC"
             )
             rows = cur.fetchall()
         return [PlanDefinitionRecord(*row) for row in rows]

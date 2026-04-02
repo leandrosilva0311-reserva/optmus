@@ -8,6 +8,7 @@ class BillingPlanResponse(BaseModel):
     name: str
     daily_scenario_limit: int
     monthly_price_cents: int
+    usage_unit_price_cents: int
 
 
 class BillingSubscriptionCreateRequest(BaseModel):
@@ -89,3 +90,18 @@ class BillingInvoiceItemResponse(BaseModel):
 
 class BillingInvoiceDetailResponse(BillingInvoiceResponse):
     items: list[BillingInvoiceItemResponse]
+
+
+class BillingCycleHistoryItemResponse(BaseModel):
+    id: str
+    period_start: datetime
+    period_end: datetime
+    invoice_id: str
+    usage_units: int
+    closed_by: str
+    created_at: datetime
+
+
+class BillingCycleHistoryResponse(BaseModel):
+    project_id: str
+    items: list[BillingCycleHistoryItemResponse]

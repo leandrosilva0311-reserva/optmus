@@ -84,6 +84,7 @@ class PlanDefinitionRecord:
     name: str
     daily_scenario_limit: int
     monthly_price_cents: int
+    usage_unit_price_cents: int
     active: bool
 
 

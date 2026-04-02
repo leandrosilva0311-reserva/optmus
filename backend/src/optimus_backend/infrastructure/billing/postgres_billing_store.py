@@ -28,14 +28,16 @@ class PostgresBillingStore:
 
     def list_active_plans(self) -> list[PlanDefinitionRecord]:
         with self._conn() as conn, conn.cursor() as cur:
-            cur.execute("SELECT plan_id, name, daily_scenario_limit, monthly_price_cents, active FROM plan_definitions WHERE active=TRUE")
+            cur.execute(
+                "SELECT plan_id, name, daily_scenario_limit, monthly_price_cents, usage_unit_price_cents, active FROM plan_definitions WHERE active=TRUE"
+            )
             rows = cur.fetchall()
         return [PlanDefinitionRecord(*row) for row in rows]
 
     def get_plan(self, plan_id: str) -> PlanDefinitionRecord | None:
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT plan_id, name, daily_scenario_limit, monthly_price_cents, active FROM plan_definitions WHERE plan_id=%s",
+                "SELECT plan_id, name, daily_scenario_limit, monthly_price_cents, usage_unit_price_cents, active FROM plan_definitions WHERE plan_id=%s",
                 (plan_id,),
             )
             row = cur.fetchone()
@@ -191,7 +193,7 @@ class PostgresBillingStore:
             )
             usage_units = int(cur.fetchone()[0])
 
-        usage_unit_price_cents = 100
+        usage_unit_price_cents = plan.usage_unit_price_cents
         usage_total_cents = usage_units * usage_unit_price_cents
         invoice = InvoiceRecord(
             str(uuid4()),
@@ -202,46 +204,62 @@ class PostgresBillingStore:
             plan.monthly_price_cents + usage_total_cents,
             datetime.now(UTC),
         )
-        with self._conn() as conn, conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO invoices(id, project_id, period_start, period_end, status, total_cents, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (invoice.id, invoice.project_id, invoice.period_start.date(), invoice.period_end.date(), invoice.status, invoice.total_cents, invoice.created_at),
-            )
-            cur.execute(
-                "INSERT INTO invoice_items(id, invoice_id, item_type, quantity, unit_price_cents, total_cents, description) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (str(uuid4()), invoice.id, "subscription_fee", 1, plan.monthly_price_cents, plan.monthly_price_cents, f"Plano {plan.name}"),
-            )
-            if usage_units > 0:
+        try:
+            with self._conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO invoices(id, project_id, period_start, period_end, status, total_cents, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (invoice.id, invoice.project_id, invoice.period_start.date(), invoice.period_end.date(), invoice.status, invoice.total_cents, invoice.created_at),
+                )
                 cur.execute(
                     "INSERT INTO invoice_items(id, invoice_id, item_type, quantity, unit_price_cents, total_cents, description) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                    (str(uuid4()), invoice.id, "usage_fee", usage_units, usage_unit_price_cents, usage_total_cents, "Consumo de cenários no período"),
+                    (str(uuid4()), invoice.id, "subscription_fee", 1, plan.monthly_price_cents, plan.monthly_price_cents, f"Plano {plan.name}"),
                 )
-            cur.execute(
-                "UPDATE subscription_plan_changes SET status='applied' WHERE project_id=%s AND status='scheduled' AND effective_at<=%s",
-                (project_id, period_end),
-            )
-            cur.execute(
-                """
-                UPDATE subscriptions
-                SET plan_id=sub_changes.to_plan_id
-                FROM (
-                  SELECT to_plan_id
-                  FROM subscription_plan_changes
-                  WHERE project_id=%s AND status='applied'
-                  ORDER BY effective_at DESC
-                  LIMIT 1
-                ) AS sub_changes
-                WHERE subscriptions.project_id=%s AND subscriptions.status IN ('active', 'cancelling')
-                """,
-                (project_id, project_id),
-            )
-            cur.execute(
-                """
-                INSERT INTO billing_cycle_closures(id, project_id, period_start, period_end, invoice_id, usage_units, closed_by, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (project_id, period_start, period_end) DO NOTHING
-                """,
-                (str(uuid4()), project_id, period_start.date(), period_end.date(), invoice.id, usage_units, actor_id, datetime.now(UTC)),
-            )
-            conn.commit()
+                if usage_units > 0:
+                    cur.execute(
+                        "INSERT INTO invoice_items(id, invoice_id, item_type, quantity, unit_price_cents, total_cents, description) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (str(uuid4()), invoice.id, "usage_fee", usage_units, usage_unit_price_cents, usage_total_cents, "Consumo de cenários no período"),
+                    )
+                cur.execute(
+                    "UPDATE subscription_plan_changes SET status='applied' WHERE project_id=%s AND status='scheduled' AND effective_at<=%s",
+                    (project_id, period_end),
+                )
+                cur.execute(
+                    """
+                    UPDATE subscriptions
+                    SET plan_id=sub_changes.to_plan_id
+                    FROM (
+                      SELECT to_plan_id
+                      FROM subscription_plan_changes
+                      WHERE project_id=%s AND status='applied'
+                      ORDER BY effective_at DESC
+                      LIMIT 1
+                    ) AS sub_changes
+                    WHERE subscriptions.project_id=%s AND subscriptions.status IN ('active', 'cancelling')
+                    """,
+                    (project_id, project_id),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO billing_cycle_closures(id, project_id, period_start, period_end, invoice_id, usage_units, closed_by, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (project_id, period_start, period_end) DO NOTHING
+                    """,
+                    (str(uuid4()), project_id, period_start.date(), period_end.date(), invoice.id, usage_units, actor_id, datetime.now(UTC)),
+                )
+                conn.commit()
+        except Exception:
+            with self._conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, project_id, period_start, period_end, status, total_cents, created_at
+                    FROM invoices
+                    WHERE project_id=%s AND period_start=%s AND period_end=%s
+                    LIMIT 1
+                    """,
+                    (project_id, period_start.date(), period_end.date()),
+                )
+                existing = cur.fetchone()
+            if existing:
+                return InvoiceRecord(*existing)
+            raise
         return invoice

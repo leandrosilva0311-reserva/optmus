@@ -12,6 +12,8 @@ from optimus_backend.api.dependencies import (
 from optimus_backend.core.usage.metering import warning_for_ratio
 from optimus_backend.schemas.billing import (
     BillingCycleCloseRequest,
+    BillingCycleHistoryItemResponse,
+    BillingCycleHistoryResponse,
     BillingInvoiceDetailResponse,
     BillingInvoiceItemResponse,
     BillingInvoiceResponse,
@@ -53,6 +55,7 @@ def list_plans(user: dict[str, str] = Depends(get_current_user)) -> list[Billing
             name=plan.name,
             daily_scenario_limit=plan.daily_scenario_limit,
             monthly_price_cents=plan.monthly_price_cents,
+            usage_unit_price_cents=plan.usage_unit_price_cents,
         )
         for plan in plans
     ]
@@ -275,5 +278,29 @@ def subscription_change_history(
                 status=change.status,
             )
             for change in items
+        ],
+    )
+
+
+@router.get("/cycles/history", response_model=BillingCycleHistoryResponse)
+def cycle_history(
+    project_id: str = Query(...),
+    user: dict[str, str] = Depends(get_current_user),
+) -> BillingCycleHistoryResponse:
+    ensure_role(user, {"admin", "operator", "viewer"})
+    items = get_billing_read_model().list_cycle_closures(project_id)
+    return BillingCycleHistoryResponse(
+        project_id=project_id,
+        items=[
+            BillingCycleHistoryItemResponse(
+                id=item.id,
+                period_start=item.period_start,
+                period_end=item.period_end,
+                invoice_id=item.invoice_id,
+                usage_units=item.usage_units,
+                closed_by=item.closed_by,
+                created_at=item.created_at,
+            )
+            for item in items
         ],
     )
