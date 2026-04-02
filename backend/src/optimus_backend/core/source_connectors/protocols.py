@@ -1,0 +1,9 @@
+from typing import Protocol
+
+
+class SourceConnector(Protocol):
+    """Source connector contract for local and future remote integrations."""
+
+    def fetch_file(self, path: str) -> str: ...
+    def list_files(self, pattern: str = "*") -> list[str]: ...
+    def search(self, query: str) -> list[dict[str, object]]: ...
