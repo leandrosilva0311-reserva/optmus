@@ -186,6 +186,7 @@ def get_auth_use_case() -> AuthenticateUserUseCase:
         users = CompositeUserRepository([seed_users, users])
     else:
         LOGGER.info("auth.wiring.composite_user_repository enabled=false")
+        users = CompositeUserRepository([seed_users, users])
     return AuthenticateUserUseCase(users=users, sessions=sessions)
 
 
@@ -246,6 +247,10 @@ class CompositeUserRepository:
                 LOGGER.info("auth.wiring.composite_lookup.found repository=%s", type(repository).__name__)
                 return user
         LOGGER.info("auth.wiring.composite_lookup.not_found email=%s", email)
+        for repository in self._repositories:
+            user = repository.find_by_email(email)
+            if user is not None:
+                return user
         return None
 
     def find_by_id(self, user_id: str) -> UserRecord | None:
