@@ -1,7 +1,15 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from optimus_backend.domain.entities import AuditEventRecord, ExecutionRecord, MemoryEntry, SubtaskRecord, UserRecord
+from optimus_backend.domain.entities import (
+    APIKeyRecord,
+    AuditEventRecord,
+    ExecutionRecord,
+    MemoryEntry,
+    SubtaskRecord,
+    TenantRecord,
+    UserRecord,
+)
 
 
 class ExecutionRepository(Protocol):
@@ -40,6 +48,14 @@ class UserRepository(Protocol):
     def find_by_id(self, user_id: str) -> UserRecord | None: ...
 
 
+class TenantRepository(Protocol):
+    def find_by_id(self, tenant_id: str) -> TenantRecord | None: ...
+
+
+class APIKeyRepository(Protocol):
+    def find_by_raw_key(self, raw_key: str) -> APIKeyRecord | None: ...
+
+
 class JobQueue(Protocol):
     def enqueue_execution(self, execution_id: str) -> None: ...
 
@@ -51,3 +67,7 @@ class LockManager(Protocol):
 
 class RateLimiter(Protocol):
     def allow(self, project_id: str, tool_name: str, project_limit: int, tool_limit: int, ttl_seconds: int = 60) -> bool: ...
+
+
+class TenantRateLimiter(Protocol):
+    def allow(self, tenant_id: str, limit: int, ttl_seconds: int = 60) -> bool: ...
