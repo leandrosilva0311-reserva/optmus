@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from functools import lru_cache
+import logging
 
 from fastapi import Header, HTTPException
 
@@ -60,6 +61,8 @@ from optimus_backend.infrastructure.tools.kaiso_queue_inspection_tool import (
 )
 from optimus_backend.infrastructure.tools.terminal_tool import TerminalTool
 from optimus_backend.settings.config import config
+
+LOGGER = logging.getLogger("optimus.auth.wiring")
 
 
 @lru_cache(maxsize=1)
@@ -125,12 +128,17 @@ def get_repositories() -> tuple[object, object, object, object, object, object, 
             InMemoryRateLimiter(),
         )
 
+    sessions_repository: object = RedisSessionRepository(config.redis_url)
+    if config.enable_dev_seed_user:
+        LOGGER.info("auth.wiring.using_in_memory_sessions_for_seed enabled=true")
+        sessions_repository = InMemorySessionRepository()
+
     return (
         PostgresExecutionRepository(config.database_url),
         PostgresSubtaskRepository(config.database_url),
         PostgresAuditRepository(config.database_url),
         PostgresMemoryRepository(config.database_url),
-        RedisSessionRepository(config.redis_url),
+        sessions_repository,
         PostgresUserRepository(config.database_url),
         ArqJobQueue(config.redis_host, config.redis_port),
         RedisLockManager(config.redis_url),
@@ -174,6 +182,10 @@ def get_auth_use_case() -> AuthenticateUserUseCase:
     _, _, _, _, sessions, users, _, _, _ = get_repositories()
     seed_users = get_dev_seed_user_repository()
     if seed_users is not None:
+        LOGGER.info("auth.wiring.composite_user_repository enabled=true")
+        users = CompositeUserRepository([seed_users, users])
+    else:
+        LOGGER.info("auth.wiring.composite_user_repository enabled=false")
         users = CompositeUserRepository([seed_users, users])
     return AuthenticateUserUseCase(users=users, sessions=sessions)
 
@@ -228,6 +240,13 @@ class CompositeUserRepository:
         self._repositories = repositories
 
     def find_by_email(self, email: str) -> UserRecord | None:
+        LOGGER.info("auth.wiring.composite_lookup.start email=%s", email)
+        for repository in self._repositories:
+            user = repository.find_by_email(email)
+            if user is not None:
+                LOGGER.info("auth.wiring.composite_lookup.found repository=%s", type(repository).__name__)
+                return user
+        LOGGER.info("auth.wiring.composite_lookup.not_found email=%s", email)
         for repository in self._repositories:
             user = repository.find_by_email(email)
             if user is not None:
@@ -243,6 +262,7 @@ class CompositeUserRepository:
 
 
 def get_dev_seed_user_repository() -> InMemoryUserRepository | None:
+    LOGGER.info("auth.wiring.seed_repo.called enabled=%s", config.enable_dev_seed_user)
     if not config.enable_dev_seed_user:
         return None
     user_repo = InMemoryUserRepository([])
@@ -251,4 +271,5 @@ def get_dev_seed_user_repository() -> InMemoryUserRepository | None:
         password_hash=hash_password(config.dev_seed_user_password),
         role=config.dev_seed_user_role,
     )
+    LOGGER.info("auth.wiring.seed_repo.created email=%s", config.dev_seed_user_email)
     return user_repo
