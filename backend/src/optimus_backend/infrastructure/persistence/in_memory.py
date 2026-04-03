@@ -97,6 +97,12 @@ class InMemoryUserRepository:
     def find_by_id(self, user_id: str) -> UserRecord | None:
         return self._users_by_id.get(user_id)
 
+    def create_user(self, email: str, password_hash: str, role: str, user_id: str = "u-dev-seed") -> UserRecord:
+        user = UserRecord(id=user_id, email=email, password_hash=password_hash, role=role)
+        self._users_by_email[email] = user
+        self._users_by_id[user_id] = user
+        return user
+
 
 class InMemoryLockManager:
     def __init__(self) -> None:

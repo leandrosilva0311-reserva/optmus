@@ -19,7 +19,7 @@ from optimus_backend.core.telemetry.sink import TelemetrySink
 from optimus_backend.core.tenancy.security import hash_api_key
 from optimus_backend.core.tooling.executor import ToolExecutor
 from optimus_backend.domain.entities import APIKeyRecord, TenantRecord, UserRecord
-from optimus_backend.domain.ports import APIKeyRepository, TenantRateLimiter, TenantRepository
+from optimus_backend.domain.ports import APIKeyRepository, TenantRateLimiter, TenantRepository, UserRepository
 from optimus_backend.infrastructure.cache.redis_locks import RedisLockManager
 from optimus_backend.infrastructure.cache.redis_rate_limiter import RedisRateLimiter
 from optimus_backend.infrastructure.cache.redis_sessions import RedisSessionRepository
@@ -113,23 +113,13 @@ def get_engine() -> AgentEngine:
 @lru_cache(maxsize=1)
 def get_repositories() -> tuple[object, object, object, object, object, object, object, object, object]:
     if config.app_env == "test":
-        users: list[UserRecord] = []
-        if config.enable_dev_seed_user:
-            users.append(
-                UserRecord(
-                    id="u-dev-seed",
-                    email=config.dev_seed_user_email,
-                    password_hash=hash_password(config.dev_seed_user_password),
-                    role=config.dev_seed_user_role,
-                )
-            )
         return (
             InMemoryExecutionRepository(),
             InMemorySubtaskRepository(),
             InMemoryAuditRepository(),
             InMemoryMemoryRepository(),
             InMemorySessionRepository(),
-            InMemoryUserRepository(users),
+            InMemoryUserRepository([]),
             InMemoryJobQueue(),
             InMemoryLockManager(),
             InMemoryRateLimiter(),
@@ -182,6 +172,9 @@ def get_tenant_resolver_use_case() -> ResolveTenantByApiKeyUseCase:
 
 def get_auth_use_case() -> AuthenticateUserUseCase:
     _, _, _, _, sessions, users, _, _, _ = get_repositories()
+    seed_users = get_dev_seed_user_repository()
+    if seed_users is not None:
+        users = CompositeUserRepository([seed_users, users])
     return AuthenticateUserUseCase(users=users, sessions=sessions)
 
 
@@ -228,3 +221,34 @@ def get_current_user(x_session_id: str = Header(default="", alias="X-Session-Id"
         "role": user.role,
         "checked_at": datetime.now(UTC).isoformat(),
     }
+
+
+class CompositeUserRepository:
+    def __init__(self, repositories: list[UserRepository]) -> None:
+        self._repositories = repositories
+
+    def find_by_email(self, email: str) -> UserRecord | None:
+        for repository in self._repositories:
+            user = repository.find_by_email(email)
+            if user is not None:
+                return user
+        return None
+
+    def find_by_id(self, user_id: str) -> UserRecord | None:
+        for repository in self._repositories:
+            user = repository.find_by_id(user_id)
+            if user is not None:
+                return user
+        return None
+
+
+def get_dev_seed_user_repository() -> InMemoryUserRepository | None:
+    if not config.enable_dev_seed_user:
+        return None
+    user_repo = InMemoryUserRepository([])
+    user_repo.create_user(
+        email=config.dev_seed_user_email,
+        password_hash=hash_password(config.dev_seed_user_password),
+        role=config.dev_seed_user_role,
+    )
+    return user_repo
