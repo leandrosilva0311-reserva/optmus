@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optimus-backend"
+version = "0.2.0"
+description = "Optimus agent platform backend"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.111.0",
+  "uvicorn>=0.30.0",
+  "pydantic>=2.7.0",
+  "email-validator>=2.2.0",
+  "psycopg[binary]>=3.2.0",
+  "redis>=5.1.0",
+  "arq>=0.25.0",
+  "argon2-cffi>=23.1.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0"
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "-q"
+markers = [
+  "integration: tests that require real PostgreSQL/Redis/ARQ runtime"
+]
