@@ -5,6 +5,7 @@ from fastapi import Header, HTTPException
 
 from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase, LogoutUseCase
 from optimus_backend.application.use_cases.list_executions import ListExecutionsUseCase
+from optimus_backend.application.use_cases.resolve_tenant import ResolveTenantByApiKeyUseCase
 from optimus_backend.application.use_cases.start_execution import FinalizeExecutionUseCase, StartExecutionUseCase
 from optimus_backend.core.agent_core.engine import AgentEngine
 from optimus_backend.core.context_builder.builder import ContextBuilder
@@ -15,7 +16,10 @@ from optimus_backend.core.provider.base import MockProvider
 from optimus_backend.core.scenarios.catalog import ScenarioCatalog
 from optimus_backend.core.specialists.agents import AnalystAgent, BugHunterAgent, DevArchitectAgent, OpsSentinelAgent, QAAgent
 from optimus_backend.core.telemetry.sink import TelemetrySink
+from optimus_backend.core.tenancy.security import hash_api_key
 from optimus_backend.core.tooling.executor import ToolExecutor
+from optimus_backend.domain.entities import APIKeyRecord, TenantRecord, UserRecord
+from optimus_backend.domain.ports import APIKeyRepository, TenantRateLimiter, TenantRepository
 from optimus_backend.infrastructure.cache.redis_locks import RedisLockManager
 from optimus_backend.infrastructure.cache.redis_rate_limiter import RedisRateLimiter
 from optimus_backend.infrastructure.cache.redis_sessions import RedisSessionRepository
@@ -29,6 +33,11 @@ from optimus_backend.infrastructure.persistence.in_memory import (
     InMemorySubtaskRepository,
     InMemoryUserRepository,
 )
+from optimus_backend.infrastructure.tenancy.in_memory import (
+    InMemoryAPIKeyRepository,
+    InMemoryTenantRateLimiter,
+    InMemoryTenantRepository,
+)
 from optimus_backend.infrastructure.persistence.postgres import (
     PostgresAuditRepository,
     PostgresExecutionRepository,
@@ -38,6 +47,7 @@ from optimus_backend.infrastructure.persistence.postgres import (
 )
 from optimus_backend.infrastructure.queue.arq_queue import ArqJobQueue
 from optimus_backend.infrastructure.queue.in_memory_queue import InMemoryJobQueue
+from optimus_backend.infrastructure.auth.security import hash_password
 from optimus_backend.infrastructure.tools.filesystem_tool import FilesystemTool
 from optimus_backend.infrastructure.tools.http_tool import HttpTool
 from optimus_backend.infrastructure.tools.kaiso_log_correlation_tool import (
@@ -103,13 +113,23 @@ def get_engine() -> AgentEngine:
 @lru_cache(maxsize=1)
 def get_repositories() -> tuple[object, object, object, object, object, object, object, object, object]:
     if config.app_env == "test":
+        users: list[UserRecord] = []
+        if config.enable_dev_seed_user:
+            users.append(
+                UserRecord(
+                    id="u-dev-seed",
+                    email=config.dev_seed_user_email,
+                    password_hash=hash_password(config.dev_seed_user_password),
+                    role=config.dev_seed_user_role,
+                )
+            )
         return (
             InMemoryExecutionRepository(),
             InMemorySubtaskRepository(),
             InMemoryAuditRepository(),
             InMemoryMemoryRepository(),
             InMemorySessionRepository(),
-            InMemoryUserRepository([]),
+            InMemoryUserRepository(users),
             InMemoryJobQueue(),
             InMemoryLockManager(),
             InMemoryRateLimiter(),
@@ -126,6 +146,38 @@ def get_repositories() -> tuple[object, object, object, object, object, object, 
         RedisLockManager(config.redis_url),
         RedisRateLimiter(config.redis_url),
     )
+
+
+@lru_cache(maxsize=1)
+def get_tenant_repositories() -> tuple[TenantRepository, APIKeyRepository]:
+    return (
+        InMemoryTenantRepository(
+            tenants=[
+                TenantRecord(id="tenant-dev", name="Tenant Development", plan="pro", is_active=True),
+            ]
+        ),
+        InMemoryAPIKeyRepository(
+            api_keys=[
+                APIKeyRecord(
+                    id="key-dev-1",
+                    tenant_id="tenant-dev",
+                    key_hash=hash_api_key(config.default_tenant_api_key),
+                    label="default development key",
+                    is_active=True,
+                )
+            ],
+        ),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_tenant_rate_limiter() -> TenantRateLimiter:
+    return InMemoryTenantRateLimiter()
+
+
+def get_tenant_resolver_use_case() -> ResolveTenantByApiKeyUseCase:
+    tenants, api_keys = get_tenant_repositories()
+    return ResolveTenantByApiKeyUseCase(api_keys=api_keys, tenants=tenants)
 
 
 def get_auth_use_case() -> AuthenticateUserUseCase:

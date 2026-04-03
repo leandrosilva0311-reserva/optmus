@@ -16,6 +16,12 @@ class AppConfig(BaseModel):
     idempotency_window_minutes: int = int(os.getenv("IDEMPOTENCY_WINDOW_MINUTES", "30"))
     rate_limit_tool_per_minute: int = int(os.getenv("RATE_LIMIT_TOOL_PER_MINUTE", "20"))
     rate_limit_project_per_minute: int = int(os.getenv("RATE_LIMIT_PROJECT_PER_MINUTE", "80"))
+    rate_limit_tenant_per_minute: int = int(os.getenv("RATE_LIMIT_TENANT_PER_MINUTE", "120"))
+    default_tenant_api_key: str = os.getenv("DEFAULT_TENANT_API_KEY", "optmus-dev-key")
+    enable_dev_seed_user: bool = os.getenv("ENABLE_DEV_SEED_USER", "false").lower() == "true"
+    dev_seed_user_email: str = os.getenv("DEV_SEED_USER_EMAIL", "test@optimus.com")
+    dev_seed_user_password: str = os.getenv("DEV_SEED_USER_PASSWORD", "12345678")
+    dev_seed_user_role: str = os.getenv("DEV_SEED_USER_ROLE", "admin")
 
 
 config = AppConfig()

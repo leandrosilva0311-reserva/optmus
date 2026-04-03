@@ -14,6 +14,8 @@ def login(payload: LoginRequest, auth: AuthenticateUserUseCase = Depends(get_aut
         result = auth.execute(payload.email, payload.password, ttl_seconds=config.auth_session_ttl_seconds)
     except PermissionError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="authentication unavailable") from exc
     return LoginResponse(session_id=result.session_id, role=result.role)
 
 
