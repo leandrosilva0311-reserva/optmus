@@ -41,6 +41,23 @@ class UserRecord:
 
 
 @dataclass(slots=True)
+class TenantRecord:
+    id: str
+    name: str
+    plan: str
+    is_active: bool = True
+
+
+@dataclass(slots=True)
+class APIKeyRecord:
+    id: str
+    tenant_id: str
+    key_hash: str
+    label: str
+    is_active: bool = True
+
+
+@dataclass(slots=True)
 class MemoryEntry:
     id: str
     project_id: str
