@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: optimus-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -e .
+    startCommand: uvicorn optimus_backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: optimus
+      - key: DATABASE_URL
+        fromDatabase:
+          name: optimus-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: optimus-redis
+          property: connectionString
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: optimus-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: optimus-redis
+          property: port
+      - key: DEFAULT_TENANT_API_KEY
+        sync: false
+      - key: AUTH_SESSION_TTL_SECONDS
+        value: "3600"
+      - key: RATE_LIMIT_PROJECT_PER_MINUTE
+        value: "80"
+      - key: RATE_LIMIT_TOOL_PER_MINUTE
+        value: "20"
+      - key: RATE_LIMIT_TENANT_PER_MINUTE
+        value: "120"
+      - key: IDEMPOTENCY_WINDOW_MINUTES
+        value: "30"
+
+  - type: redis
+    name: optimus-redis
+    plan: starter
+    ipAllowList: []
+
+databases:
+  - name: optimus-postgres
+    databaseName: optimus
+    user: optimus
+    plan: starter

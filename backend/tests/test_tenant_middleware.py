@@ -18,7 +18,7 @@ def test_middleware_requires_api_key() -> None:
 
 def test_middleware_allows_exempt_health_route_without_api_key() -> None:
     client = TestClient(app)
-    response = client.get("/health/")
+    response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 

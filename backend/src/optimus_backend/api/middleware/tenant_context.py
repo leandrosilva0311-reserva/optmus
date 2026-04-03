@@ -29,7 +29,7 @@ class TenantContextMiddleware(BaseHTTPMiddleware):
         self._per_minute_limit = per_minute_limit
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path in {"/docs", "/redoc", "/openapi.json", "/health/", "/auth/login", "/auth/logout"}:
+        if request.url.path in {"/docs", "/redoc", "/openapi.json", "/health", "/health/", "/auth/login", "/auth/logout"}:
             return await call_next(request)
 
         raw_api_key = request.headers.get("X-API-Key", "")
