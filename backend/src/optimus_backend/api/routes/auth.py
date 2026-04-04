@@ -21,9 +21,6 @@ def login(payload: LoginRequest, auth: AuthenticateUserUseCase = Depends(get_aut
         LOGGER.info("auth.login.permission_error detail=%s", str(exc))
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except Exception as exc:
-        LOGGER.exception("auth.login.unavailable error=%s", type(exc).__name__)
-        raise HTTPException(status_code=503, detail="authentication unavailable") from exc
-    LOGGER.info("auth.login.success user_role=%s", result.role)
         raise HTTPException(status_code=503, detail="authentication unavailable") from exc
     return LoginResponse(session_id=result.session_id, role=result.role)
 

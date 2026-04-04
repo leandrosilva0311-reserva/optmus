@@ -10,10 +10,6 @@ from optimus_backend.application.use_cases.authenticate import AuthenticateUserU
 from optimus_backend.infrastructure.persistence.in_memory import InMemorySessionRepository, InMemoryUserRepository
 from optimus_backend.main import app
 from optimus_backend.settings.config import config
-from optimus_backend.api.dependencies import get_auth_use_case
-from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase
-from optimus_backend.infrastructure.persistence.in_memory import InMemorySessionRepository, InMemoryUserRepository
-from optimus_backend.main import app
 
 
 def _auth_use_case_with_users(users: list) -> AuthenticateUserUseCase:
