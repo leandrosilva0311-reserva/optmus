@@ -13,9 +13,12 @@ LOGGER = logging.getLogger("optimus.auth.route")
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, auth: AuthenticateUserUseCase = Depends(get_auth_use_case)) -> LoginResponse:
+    LOGGER.info("auth.login.request email=%s", payload.email)
+    LOGGER.info("auth.login.use_case type=%s", type(auth).__name__)
     try:
         result = auth.execute(payload.email, payload.password, ttl_seconds=config.auth_session_ttl_seconds)
     except PermissionError as exc:
+        LOGGER.info("auth.login.permission_error detail=%s", str(exc))
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="authentication unavailable") from exc
