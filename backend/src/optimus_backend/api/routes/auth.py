@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from optimus_backend.api.dependencies import get_auth_use_case, get_logout_use_case
@@ -6,6 +8,7 @@ from optimus_backend.schemas.auth import LoginRequest, LoginResponse, LogoutResp
 from optimus_backend.settings.config import config
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+LOGGER = logging.getLogger("optimus.auth.route")
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -14,6 +17,8 @@ def login(payload: LoginRequest, auth: AuthenticateUserUseCase = Depends(get_aut
         result = auth.execute(payload.email, payload.password, ttl_seconds=config.auth_session_ttl_seconds)
     except PermissionError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="authentication unavailable") from exc
     return LoginResponse(session_id=result.session_id, role=result.role)
 
 
