@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from optimus_backend.api.dependencies import get_tenant_rate_limiter, get_tenant_resolver_use_case
 from optimus_backend.api.middleware.tenant_context import TenantContextMiddleware
@@ -19,6 +20,11 @@ app = FastAPI(
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=_openapi_url,
+)
+# TrustedHostMiddleware runs outermost — rejects requests with invalid Host header before any processing
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["api.optimumprime.org", "localhost", "127.0.0.1"],
 )
 app.add_middleware(
     TenantContextMiddleware,
