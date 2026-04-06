@@ -47,8 +47,11 @@ services:
       RATE_LIMIT_TOOL_PER_MINUTE: "20"
       RATE_LIMIT_PROJECT_PER_MINUTE: "80"
       RATE_LIMIT_TENANT_PER_MINUTE: "120"
-      DEFAULT_TENANT_API_KEY: optimus-dev-key
+      RATE_LIMIT_LOGIN_PER_MINUTE: "10"
+      DEFAULT_TENANT_API_KEY: ${DEFAULT_TENANT_API_KEY:?DEFAULT_TENANT_API_KEY is required}
       PROJECT_ROOT: /workspace/optmus
+      DOCS_ENABLED: "false"
+      ENABLE_DEV_SEED_USER: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,7 +76,7 @@ services:
       RATE_LIMIT_TOOL_PER_MINUTE: "20"
       RATE_LIMIT_PROJECT_PER_MINUTE: "80"
       RATE_LIMIT_TENANT_PER_MINUTE: "120"
-      DEFAULT_TENANT_API_KEY: optimus-dev-key
+      DEFAULT_TENANT_API_KEY: ${DEFAULT_TENANT_API_KEY:?DEFAULT_TENANT_API_KEY is required}
       PROJECT_ROOT: /workspace/optmus
     depends_on:
       postgres:

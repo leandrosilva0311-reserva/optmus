@@ -9,7 +9,17 @@ from optimus_backend.api.routes.health import router as health_router
 from optimus_backend.api.routes.scenarios import router as scenarios_router
 from optimus_backend.settings.config import config
 
-app = FastAPI(title=config.app_name, version=config.app_version)
+_docs_url = "/docs" if config.docs_enabled else None
+_redoc_url = "/redoc" if config.docs_enabled else None
+_openapi_url = "/openapi.json" if config.docs_enabled else None
+
+app = FastAPI(
+    title=config.app_name,
+    version=config.app_version,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
+)
 app.add_middleware(
     TenantContextMiddleware,
     resolver=get_tenant_resolver_use_case(),

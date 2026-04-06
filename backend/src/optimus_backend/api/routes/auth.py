@@ -1,6 +1,9 @@
 import logging
+import time
+from collections import defaultdict
+from threading import Lock
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from optimus_backend.api.dependencies import get_auth_use_case, get_logout_use_case
 from optimus_backend.application.use_cases.authenticate import AuthenticateUserUseCase, LogoutUseCase
@@ -10,18 +13,43 @@ from optimus_backend.settings.config import config
 router = APIRouter(prefix="/auth", tags=["auth"])
 LOGGER = logging.getLogger("optimus.auth.route")
 
+# In-process login rate limiter — keyed by client IP
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_lock = Lock()
+
+
+def _check_login_rate_limit(client_ip: str) -> None:
+    now = time.monotonic()
+    window = 60.0
+    with _login_lock:
+        attempts = [t for t in _login_attempts[client_ip] if now - t < window]
+        attempts.append(now)
+        _login_attempts[client_ip] = attempts
+        if len(attempts) > config.rate_limit_login_per_minute:
+            raise HTTPException(status_code=429, detail="too many login attempts")
+
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, auth: AuthenticateUserUseCase = Depends(get_auth_use_case)) -> LoginResponse:
-    LOGGER.info("auth.login.request email=%s", payload.email)
-    LOGGER.info("auth.login.use_case type=%s", type(auth).__name__)
+def login(
+    request: Request,
+    payload: LoginRequest,
+    auth: AuthenticateUserUseCase = Depends(get_auth_use_case),
+) -> LoginResponse:
+    cf_ip = request.headers.get("CF-Connecting-IP", "")
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    client_ip = cf_ip or (forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown"))
+
+    _check_login_rate_limit(client_ip)
+    LOGGER.info("auth.login.attempt ip=%s", client_ip)
     try:
         result = auth.execute(payload.email, payload.password, ttl_seconds=config.auth_session_ttl_seconds)
-    except PermissionError as exc:
-        LOGGER.info("auth.login.permission_error detail=%s", str(exc))
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except PermissionError:
+        LOGGER.warning("auth.login.failed ip=%s", client_ip)
+        raise HTTPException(status_code=401, detail="invalid credentials") from None
     except Exception as exc:
+        LOGGER.exception("auth.login.error ip=%s", client_ip)
         raise HTTPException(status_code=503, detail="authentication unavailable") from exc
+    LOGGER.info("auth.login.success ip=%s role=%s", client_ip, result.role)
     return LoginResponse(session_id=result.session_id, role=result.role)
 
 

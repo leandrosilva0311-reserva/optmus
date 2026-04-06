@@ -20,13 +20,12 @@ class AuthenticateUserUseCase:
         self._sessions = sessions
 
     def execute(self, email: str, password: str, ttl_seconds: int = 3600) -> AuthResult:
-        LOGGER.info("auth.execute.start email=%s", email)
+        LOGGER.info("auth.execute.start")
         user = self._users.find_by_email(email)
         LOGGER.info("auth.execute.user_lookup found=%s", user is not None)
         if user is None:
             raise PermissionError("invalid credentials")
         password_match = verify_password(password, user.password_hash)
-        LOGGER.info("auth.execute.password_check matched=%s", password_match)
         if not password_match:
             raise PermissionError("invalid credentials")
 

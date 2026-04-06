@@ -17,11 +17,16 @@ class AppConfig(BaseModel):
     rate_limit_tool_per_minute: int = int(os.getenv("RATE_LIMIT_TOOL_PER_MINUTE", "20"))
     rate_limit_project_per_minute: int = int(os.getenv("RATE_LIMIT_PROJECT_PER_MINUTE", "80"))
     rate_limit_tenant_per_minute: int = int(os.getenv("RATE_LIMIT_TENANT_PER_MINUTE", "120"))
+    rate_limit_login_per_minute: int = int(os.getenv("RATE_LIMIT_LOGIN_PER_MINUTE", "10"))
     default_tenant_api_key: str = os.getenv("DEFAULT_TENANT_API_KEY", "optmus-dev-key")
     enable_dev_seed_user: bool = os.getenv("ENABLE_DEV_SEED_USER", "false").lower() == "true"
     dev_seed_user_email: str = os.getenv("DEV_SEED_USER_EMAIL", "test@optimus.com")
     dev_seed_user_password: str = os.getenv("DEV_SEED_USER_PASSWORD", "12345678")
     dev_seed_user_role: str = os.getenv("DEV_SEED_USER_ROLE", "admin")
+    # production: set to "false" to disable swagger UI
+    docs_enabled: bool = os.getenv("DOCS_ENABLED", "true").lower() == "true"
+    # comma-separated list of trusted Cloudflare/proxy CIDRs (informational — enforced at Nginx level)
+    trusted_proxy_ips: str = os.getenv("TRUSTED_PROXY_IPS", "")
 
 
 config = AppConfig()

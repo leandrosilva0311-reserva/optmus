@@ -24,6 +24,7 @@ from optimus_backend.domain.ports import APIKeyRepository, TenantRateLimiter, Te
 from optimus_backend.infrastructure.cache.redis_locks import RedisLockManager
 from optimus_backend.infrastructure.cache.redis_rate_limiter import RedisRateLimiter
 from optimus_backend.infrastructure.cache.redis_sessions import RedisSessionRepository
+from optimus_backend.infrastructure.cache.redis_tenant_rate_limiter import RedisTenantRateLimiter
 from optimus_backend.infrastructure.persistence.in_memory import (
     InMemoryAuditRepository,
     InMemoryExecutionRepository,
@@ -170,7 +171,9 @@ def get_tenant_repositories() -> tuple[TenantRepository, APIKeyRepository]:
 
 @lru_cache(maxsize=1)
 def get_tenant_rate_limiter() -> TenantRateLimiter:
-    return InMemoryTenantRateLimiter()
+    if config.app_env == "test":
+        return InMemoryTenantRateLimiter()
+    return RedisTenantRateLimiter(config.redis_url)
 
 
 def get_tenant_resolver_use_case() -> ResolveTenantByApiKeyUseCase:
