@@ -182,15 +182,20 @@ def get_tenant_resolver_use_case() -> ResolveTenantByApiKeyUseCase:
     return ResolveTenantByApiKeyUseCase(api_keys=api_keys, tenants=tenants)
 
 
-def get_auth_use_case() -> AuthenticateUserUseCase:
-    _, _, _, _, sessions, users, _, _, _ = get_repositories()
-    seed_users = get_dev_seed_user_repository()
-    if seed_users is not None:
+@lru_cache(maxsize=1)
+def get_user_repo() -> UserRepository:
+    _, _, _, _, _, users, _, _, _ = get_repositories()
+    seed = get_dev_seed_user_repository()
+    if seed is not None:
         LOGGER.info("auth.wiring.composite_user_repository enabled=true")
-        users = CompositeUserRepository([seed_users, users])
-    else:
-        LOGGER.info("auth.wiring.composite_user_repository enabled=false")
-    return AuthenticateUserUseCase(users=users, sessions=sessions)
+        return CompositeUserRepository([seed, users])
+    LOGGER.info("auth.wiring.composite_user_repository enabled=false")
+    return users
+
+
+def get_auth_use_case() -> AuthenticateUserUseCase:
+    _, _, _, _, sessions, _, _, _, _ = get_repositories()
+    return AuthenticateUserUseCase(users=get_user_repo(), sessions=sessions)
 
 
 def get_logout_use_case() -> LogoutUseCase:
@@ -223,11 +228,11 @@ def get_list_execution_use_case() -> ListExecutionsUseCase:
 def get_current_user(x_session_id: str = Header(default="", alias="X-Session-Id")) -> dict[str, str]:
     if not x_session_id:
         raise HTTPException(status_code=401, detail="missing session")
-    _, _, _, _, sessions, users, _, _, _ = get_repositories()
+    _, _, _, _, sessions, _, _, _, _ = get_repositories()
     user_id = sessions.get_user_id(x_session_id)
     if not user_id:
         raise HTTPException(status_code=401, detail="invalid session")
-    user = users.find_by_id(user_id)
+    user = get_user_repo().find_by_id(user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="unknown user")
     return {
