@@ -14,6 +14,7 @@ from optimus_backend.core.execution_guard.guard import ExecutionGuard
 from optimus_backend.core.orchestrator.service import Orchestrator
 from optimus_backend.core.policy.engine import PolicyEngine
 from optimus_backend.core.provider.base import MockProvider
+from optimus_backend.infrastructure.llm.groq_provider import GroqProvider
 from optimus_backend.core.scenarios.catalog import ScenarioCatalog
 from optimus_backend.core.specialists.agents import AnalystAgent, BugHunterAgent, DevArchitectAgent, OpsSentinelAgent, QAAgent
 from optimus_backend.core.telemetry.sink import TelemetrySink
@@ -68,7 +69,7 @@ LOGGER = logging.getLogger("optimus.auth.wiring")
 
 @lru_cache(maxsize=1)
 def get_orchestrator() -> Orchestrator:
-    provider = MockProvider()
+    provider = GroqProvider(api_key=config.groq_api_key, model=config.groq_model) if config.groq_api_key else MockProvider()
     specialists = {
         "dev_architect": DevArchitectAgent(provider),
         "bug_hunter": BugHunterAgent(provider),

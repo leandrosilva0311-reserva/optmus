@@ -9,11 +9,11 @@ class Orchestrator:
     def __init__(self, specialists: dict[str, BaseSpecialist]) -> None:
         self._specialists = specialists
 
-    def run(self, agent: str, objective: str) -> SpecialistResult:
+    async def run(self, agent: str, objective: str) -> SpecialistResult:
         specialist = self._specialists.get(agent)
         if specialist is None:
             raise KeyError(f"agent '{agent}' not configured")
-        return specialist.run(objective)
+        return await specialist.run(objective)
 
     def plan_subtasks(self, execution_id: str, objective: str) -> list[SubtaskRecord]:
         now = datetime.now(UTC)

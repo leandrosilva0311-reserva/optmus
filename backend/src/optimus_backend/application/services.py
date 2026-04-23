@@ -5,5 +5,5 @@ class TaskService:
     def __init__(self, engine: AgentEngine) -> None:
         self._engine = engine
 
-    def run_task(self, objective: str, agent: str) -> ExecutionResult:
-        return self._engine.execute(objective=objective, agent=agent)
+    async def run_task(self, objective: str, agent: str) -> ExecutionResult:
+        return await self._engine.execute(objective=objective, agent=agent)

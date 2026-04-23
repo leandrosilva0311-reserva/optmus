@@ -22,8 +22,8 @@ class BaseSpecialist:
     def __init__(self, provider: LLMProvider) -> None:
         self.provider = provider
 
-    def run(self, objective: str) -> SpecialistResult:
-        content = self.provider.complete(f"[{self.name}] {self.role_prompt} | objective={objective}")
+    async def run(self, objective: str) -> SpecialistResult:
+        content = await self.provider.complete(f"[{self.name}] {self.role_prompt} | objective={objective}")
         return SpecialistResult(
             agent=self.name,
             diagnosis=content[:140],
@@ -59,8 +59,8 @@ class AnalystAgent(BaseSpecialist):
     name = "analyst"
     role_prompt = "Produce executive and technical summary with bottlenecks"
 
-    def run(self, objective: str) -> SpecialistResult:
-        base = super().run(objective)
+    async def run(self, objective: str) -> SpecialistResult:
+        base = await super().run(objective)
         plan = [
             "Prioritize critical blockers",
             "Assign owner and timeline",

@@ -13,7 +13,7 @@ from optimus_backend.core.tooling.models import ToolExecutionRequest
 from optimus_backend.settings.config import config
 
 
-def run_execution_job(ctx: dict, execution_id: str) -> None:
+async def run_execution_job(ctx: dict, execution_id: str) -> None:
     _ = ctx
     executions, subtasks_repo, audit, _, _, _, _, locks = get_repositories()
     finalize = get_finalize_execution_use_case()
@@ -88,7 +88,7 @@ def run_execution_job(ctx: dict, execution_id: str) -> None:
                 audit.append(build_event(execution_id, "budget_cutoff", cutoff_reason or "unknown"))
                 return
 
-            result = engine._orchestrator.run(subtask.agent, subtask.title)
+            result = await engine._orchestrator.run(subtask.agent, subtask.title)
             status = "completed"
             if subtask.agent == "analyst" and not result.execution_plan:
                 status = "partial"

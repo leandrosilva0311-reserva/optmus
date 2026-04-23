@@ -27,7 +27,7 @@ class AgentEngine:
         self._orchestrator = orchestrator
         self._telemetry = telemetry
 
-    def execute(self, objective: str, agent: str, project_id: str = "default") -> ExecutionResult:
+    async def execute(self, objective: str, agent: str, project_id: str = "default") -> ExecutionResult:
         execution_id = str(uuid4())
         context = self._context_builder.build(project_id=project_id, objective=objective)
         context_reason = "; ".join(item.reason for item in context.items[:3])
@@ -36,8 +36,8 @@ class AgentEngine:
         self._guard.assert_iteration(1)
         self._guard.assert_non_destructive(objective)
 
-        specialist_result = self._orchestrator.run(agent, context.objective)
-        summary = f"agent={specialist_result.agent} result={specialist_result.output}"
+        specialist_result = await self._orchestrator.run(agent, context.objective)
+        summary = f"agent={specialist_result.agent} result={specialist_result.diagnosis}"
 
         self._telemetry.emit(TelemetryEvent(execution_id, agent, "finish", summary))
         return ExecutionResult(execution_id=execution_id, status="completed", summary=summary)

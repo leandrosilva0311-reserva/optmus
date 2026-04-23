@@ -23,6 +23,8 @@ class AppConfig(BaseModel):
     dev_seed_user_email: str = os.getenv("DEV_SEED_USER_EMAIL", "test@optimus.com")
     dev_seed_user_password: str = os.getenv("DEV_SEED_USER_PASSWORD", "12345678")
     dev_seed_user_role: str = os.getenv("DEV_SEED_USER_ROLE", "admin")
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     # production: set to "false" to disable swagger UI
     docs_enabled: bool = os.getenv("DOCS_ENABLED", "true").lower() == "true"
     # comma-separated list of trusted Cloudflare/proxy CIDRs (informational — enforced at Nginx level)
